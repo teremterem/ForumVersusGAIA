@@ -53,7 +53,6 @@ charset-normalizer==3.3.2
     #   requests
 click==8.1.7
     # via
-    #   -c requirements.txt
     #   black
     #   pip-tools
 comm==0.2.0

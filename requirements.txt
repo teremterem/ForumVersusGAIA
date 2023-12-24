@@ -17,8 +17,6 @@ anyio==4.2.0
     #   httpx
     #   langchain-core
     #   openai
-asgiref==3.7.2
-    # via django
 attrs==23.1.0
     # via aiohttp
 certifi==2023.11.17
@@ -32,18 +30,14 @@ charset-normalizer==3.3.2
     # via
     #   pdfminer-six
     #   requests
-click==8.1.7
-    # via uvicorn
 cryptography==41.0.7
     # via pdfminer-six
 dataclasses-json==0.6.3
     # via
     #   langchain
     #   langchain-community
-distro==1.8.0
+distro==1.9.0
     # via openai
-django==5.0
-    # via -r requirements.in
 frozenlist==1.4.1
     # via
     #   aiohttp
@@ -51,16 +45,13 @@ frozenlist==1.4.1
 google-search-results==2.4.2
     # via -r requirements.in
 h11==0.14.0
-    # via
-    #   httpcore
-    #   uvicorn
+    # via httpcore
 httpcore==1.0.2
     # via httpx
-httpx==0.25.2
+httpx==0.26.0
     # via
     #   -r requirements.in
     #   openai
-    #   python-telegram-bot
 idna==3.6
     # via
     #   anyio
@@ -127,13 +118,11 @@ pydantic==2.5.3
     #   openai
 pydantic-core==2.14.6
     # via pydantic
-pypdf==3.17.3
+pypdf==3.17.4
     # via -r requirements.in
 pypdfium2==4.25.0
     # via pdfplumber
 python-dotenv==1.0.0
-    # via -r requirements.in
-python-telegram-bot==20.7
     # via -r requirements.in
 pyyaml==6.0.1
     # via
@@ -158,8 +147,6 @@ sqlalchemy==2.0.23
     # via
     #   langchain
     #   langchain-community
-sqlparse==0.4.4
-    # via django
 tenacity==8.2.3
     # via
     #   langchain
@@ -182,7 +169,5 @@ urllib3==2.1.0
     # via
     #   requests
     #   types-requests
-uvicorn==0.25.0
-    # via -r requirements.in
 yarl==1.9.4
     # via aiohttp
