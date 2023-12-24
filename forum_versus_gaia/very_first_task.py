@@ -4,17 +4,13 @@ Try out a question from the GAIA dataset.
 import io
 import json
 import os
-from functools import partial
 
 import httpx
-import promptlayer
 import pypdf
-from agentforum.ext.llms.openai import openai_chat_completion
-from agentforum.forum import Forum, InteractionContext
+from agentforum.forum import InteractionContext
 from serpapi import GoogleSearch
 
-forum = Forum()
-async_openai_client = promptlayer.openai.AsyncOpenAI()
+from forum_versus_gaia.forum_versus_gaia_config import forum, gpt4_completion
 
 GAIA_SYSTEM_PROMPT = """\
 You are a general AI assistant. I will ask you a question. Report your thoughts, and finish your answer with the \
@@ -61,14 +57,6 @@ Your name is FindPDF. You will be provided with the content of a web page that w
 given user query. The user is looking for a PDF document. Your job is to extract from this web page a URL that, in \
 your opinion, is the most likely to lead to the PDF document the user is looking for.\
 """
-
-gpt4_completion = partial(
-    openai_chat_completion,
-    async_openai_client=async_openai_client,
-    model="gpt-4-1106-preview",
-    # model="gpt-3.5-turbo-1106",
-    temperature=0,
-)
 
 
 @forum.agent

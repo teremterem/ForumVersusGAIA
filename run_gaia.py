@@ -1,20 +1,20 @@
-# pylint: disable=wrong-import-position
-"""Run GAIA resolver."""
+# pylint: disable=unused-import
+"""Run GAIA solver."""
 import asyncio
 
 # noinspection PyUnresolvedReferences
-import readline  # pylint: disable=unused-import
+import readline
 import warnings
 
-from dotenv import load_dotenv
-
-load_dotenv()
+# ATTENTION! This import must go before any other imports from this project
+# noinspection PyUnresolvedReferences
+from forum_versus_gaia import forum_versus_gaia_config
 
 # TODO Oleksandr: get rid of this warning suppression when PromptLayer doesn't produce "Expected Choice but got dict"
 #  warning anymore
 warnings.filterwarnings("ignore", module="pydantic")
 
-from try_gaia.single_question import main
-
 if __name__ == "__main__":
+    from forum_versus_gaia.very_first_task import main
+
     asyncio.run(main())
