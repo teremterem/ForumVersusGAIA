@@ -10,7 +10,7 @@ import pypdf
 from agentforum.forum import InteractionContext
 from serpapi import GoogleSearch
 
-from forum_versus_gaia.forum_versus_gaia_config import forum, gpt4_completion
+from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion
 
 GAIA_SYSTEM_PROMPT = """\
 You are a general AI assistant. I will ask you a question. Report your thoughts, and finish your answer with the \
@@ -74,7 +74,7 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
             "role": "user",
         },
     ]
-    query_msg_content = await gpt4_completion(prompt=prompt, stop="\nObservation:").amaterialize_content()
+    query_msg_content = await slow_gpt_completion(prompt=prompt, stop="\nObservation:").amaterialize_content()
     query = query_msg_content.split("Action Input:")[1].strip()
 
     search = GoogleSearch(
@@ -103,7 +103,7 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
             "role": "system",
         },
     ]
-    page_url = (await gpt4_completion(prompt=prompt).amaterialize_content()).strip()
+    page_url = (await slow_gpt_completion(prompt=prompt).amaterialize_content()).strip()
 
     for _ in range(5):
         httpx_response = await httpx.AsyncClient().get(page_url)
@@ -129,7 +129,7 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
                 "role": "system",
             },
         ]
-        page_url = (await gpt4_completion(prompt=prompt).amaterialize_content()).strip()
+        page_url = (await slow_gpt_completion(prompt=prompt).amaterialize_content()).strip()
     else:
         raise RuntimeError("Could not find a PDF document.")  # TODO Oleksandr: custom exception ?
 
@@ -163,7 +163,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
         # TODO Oleksandr: should be possible to just send ctx.request_messages instead of *...
         *await ctx.request_messages.amaterialize_full_history(),
     ]
-    ctx.respond(gpt4_completion(prompt=prompt, **kwargs))
+    ctx.respond(slow_gpt_completion(prompt=prompt, **kwargs))
 
 
 async def run_assistant(question: str) -> str:

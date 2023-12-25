@@ -20,9 +20,18 @@ SLOW_GPT = "gpt-4-1106-preview"
 
 forum = Forum()
 
-gpt4_completion = partial(
+zero_temperature_completion = partial(
     openai_chat_completion,
     async_openai_client=async_openai_client,
-    model=SLOW_GPT,
     temperature=0,
+)
+
+fast_gpt_completion = partial(
+    zero_temperature_completion,
+    model=FAST_GPT,
+)
+
+slow_gpt_completion = partial(
+    zero_temperature_completion,
+    model=SLOW_GPT,
 )
