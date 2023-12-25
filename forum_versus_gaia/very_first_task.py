@@ -166,14 +166,9 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     ctx.respond(gpt4_completion(prompt=prompt, **kwargs))
 
 
-async def main() -> None:
-    """Run the assistant."""
-
-    question = (
-        "What was the volume in m^3 of the fish bag that was calculated in the University of Leicester paper "
-        '"Can Hiccup Supply Enough Fish to Maintain a Dragon’s Diet?"'
-    )
-    print("\nQUESTION:", question)
+async def run_assistant(question: str) -> str:
+    """Run the assistant. Return the final answer in upper case."""
+    print("\n\nQUESTION:", question)
 
     assistant_responses = gaia_agent.quick_call(question, stream=True)
 
@@ -183,3 +178,20 @@ async def main() -> None:
             print(token.text, end="", flush=True)
         print("\033[0m")
     print()
+
+    final_answer = await assistant_responses.amaterialize_concluding_msg_content()
+    final_answer = final_answer.upper()
+    final_answer = final_answer.split("FINAL ANSWER:")[1].strip()
+    return final_answer
+
+
+async def main() -> None:
+    """
+    Run the assistant on a question from the GAIA dataset.
+    """
+    question = (
+        "In Series 9, Episode 11 of Doctor Who, the Doctor is trapped inside an ever-shifting maze. What is this "
+        "location called in the official script for the episode? Give the setting exactly as it appears in the "
+        "first scene heading."
+    )
+    await run_assistant(question)
