@@ -24,7 +24,7 @@ If you are asked for a comma separated list, apply the above rules depending of 
 list is a number or a string.\
 """
 
-SEARCH_PDF_PROMPT = """\
+CHOOSE_TOOL_PROMPT = """\
 Answer the following questions as best you can. You have access to the following tools:
 
 FindPDF: Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful \
@@ -60,22 +60,10 @@ your opinion, is the most likely to lead to the PDF document the user is looking
 
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext) -> None:
+async def pdf_finder_agent(ctx: InteractionContext, original_question: str = "") -> None:
     """Call SerpAPI directly."""
-    # TODO Oleksandr: find a prompt format that allows full chat history to be passed
-    last_message = (await ctx.request_messages.amaterialize_concluding_message()).content.strip()
-    prompt = [
-        {
-            "content": SEARCH_PDF_PROMPT,
-            "role": "system",
-        },
-        {
-            "content": f"Question: {last_message}\nThought:",
-            "role": "user",
-        },
-    ]
-    query_msg_content = await fast_gpt_completion(prompt=prompt, stop="\nObservation:").amaterialize_content()
-    query = query_msg_content.split("Action Input:")[1].strip()
+    query = await ctx.request_messages.amaterialize_concluding_content()
+    query = query.strip()
 
     search = GoogleSearch(
         {
@@ -91,7 +79,9 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
             "role": "system",
         },
         {
-            "content": f"USER QUERY: {query}\n\nTHE ORIGINAL QUESTION THIS QUERY WAS DERIVED FROM: {last_message}",
+            "content": (
+                f"USER QUERY: {query}\n\nTHE ORIGINAL QUESTION THIS QUERY WAS DERIVED FROM: {original_question}"
+            ),
             "role": "user",
         },
         {
@@ -117,7 +107,9 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
                 "role": "system",
             },
             {
-                "content": f"USER QUERY: {query}\n\nTHE ORIGINAL QUESTION THIS QUERY WAS DERIVED FROM: {last_message}",
+                "content": (
+                    f"USER QUERY: {query}\n\nTHE ORIGINAL QUESTION THIS QUERY WAS DERIVED FROM: {original_question}"
+                ),
                 "role": "user",
             },
             {
@@ -141,6 +133,29 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
 @forum.agent
 async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     """An agent that uses OpenAI ChatGPT under the hood. It sends the full chat history to the OpenAI API."""
+    # TODO Oleksandr: find a prompt format that allows full chat history to be passed
+    last_message = await ctx.request_messages.amaterialize_concluding_content()
+    last_message = last_message.strip()
+
+    prompt = [
+        {
+            "content": CHOOSE_TOOL_PROMPT,
+            "role": "system",
+        },
+        {
+            "content": f"Question: {last_message}\nThought:",
+            "role": "user",
+        },
+    ]
+    query_msg_content = await fast_gpt_completion(prompt=prompt, stop="\nObservation:").amaterialize_content()
+    query = query_msg_content.split("Action Input:")[1].strip()
+
+    pdf_content = await pdf_finder_agent.quick_call(
+        # TODO Oleksandr: introduce "reply_to" feature in the message tree and use it instead of agent kwarg ?
+        query,
+        original_question=last_message,
+    ).amaterialize_concluding_content()
+
     prompt = [
         {
             "content": GAIA_SYSTEM_PROMPT,
@@ -151,9 +166,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             "role": "system",
         },
         {
-            "content": (
-                await pdf_finder_agent.quick_call(ctx.request_messages).amaterialize_concluding_message()
-            ).content,
+            "content": pdf_content,
             "role": "user",
         },
         {
@@ -179,7 +192,7 @@ async def run_assistant(question: str) -> str:
         print("\033[0m")
     print()
 
-    final_answer = await assistant_responses.amaterialize_concluding_msg_content()
+    final_answer = await assistant_responses.amaterialize_concluding_content()
     final_answer = final_answer.upper()
     final_answer = final_answer.split("FINAL ANSWER:")[1].strip()
     return final_answer
