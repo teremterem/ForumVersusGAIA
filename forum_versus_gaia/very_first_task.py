@@ -10,7 +10,7 @@ import pypdf
 from agentforum.forum import InteractionContext
 from serpapi import GoogleSearch
 
-from forum_versus_gaia.forum_versus_gaia_config import forum, gpt4_completion
+from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion, slow_gpt_completion
 
 GAIA_SYSTEM_PROMPT = """\
 You are a general AI assistant. I will ask you a question. Report your thoughts, and finish your answer with the \
@@ -24,7 +24,7 @@ If you are asked for a comma separated list, apply the above rules depending of 
 list is a number or a string.\
 """
 
-SEARCH_PDF_PROMPT = """\
+CHOOSE_TOOL_PROMPT = """\
 Answer the following questions as best you can. You have access to the following tools:
 
 FindPDF: Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful \
@@ -60,22 +60,10 @@ your opinion, is the most likely to lead to the PDF document the user is looking
 
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext) -> None:
+async def pdf_finder_agent(ctx: InteractionContext, original_question: str = "") -> None:
     """Call SerpAPI directly."""
-    # TODO Oleksandr: find a prompt format that allows full chat history to be passed
-    last_message = (await ctx.request_messages.amaterialize_concluding_message()).content.strip()
-    prompt = [
-        {
-            "content": SEARCH_PDF_PROMPT,
-            "role": "system",
-        },
-        {
-            "content": f"Question: {last_message}\nThought:",
-            "role": "user",
-        },
-    ]
-    query_msg_content = await gpt4_completion(prompt=prompt, stop="\nObservation:").amaterialize_content()
-    query = query_msg_content.split("Action Input:")[1].strip()
+    query = await ctx.request_messages.amaterialize_concluding_content()
+    query = query.strip()
 
     search = GoogleSearch(
         {
@@ -91,7 +79,9 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
             "role": "system",
         },
         {
-            "content": f"USER QUERY: {query}\n\nTHE ORIGINAL QUESTION THIS QUERY WAS DERIVED FROM: {last_message}",
+            "content": (
+                f"USER QUERY: {query}\n\nTHE ORIGINAL QUESTION THIS QUERY WAS DERIVED FROM: {original_question}"
+            ),
             "role": "user",
         },
         {
@@ -103,7 +93,7 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
             "role": "system",
         },
     ]
-    page_url = (await gpt4_completion(prompt=prompt).amaterialize_content()).strip()
+    page_url = (await fast_gpt_completion(prompt=prompt).amaterialize_content()).strip()
 
     for _ in range(5):
         httpx_response = await httpx.AsyncClient().get(page_url)
@@ -117,7 +107,9 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
                 "role": "system",
             },
             {
-                "content": f"USER QUERY: {query}\n\nTHE ORIGINAL QUESTION THIS QUERY WAS DERIVED FROM: {last_message}",
+                "content": (
+                    f"USER QUERY: {query}\n\nTHE ORIGINAL QUESTION THIS QUERY WAS DERIVED FROM: {original_question}"
+                ),
                 "role": "user",
             },
             {
@@ -129,7 +121,7 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
                 "role": "system",
             },
         ]
-        page_url = (await gpt4_completion(prompt=prompt).amaterialize_content()).strip()
+        page_url = (await fast_gpt_completion(prompt=prompt).amaterialize_content()).strip()
     else:
         raise RuntimeError("Could not find a PDF document.")  # TODO Oleksandr: custom exception ?
 
@@ -141,6 +133,29 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
 @forum.agent
 async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     """An agent that uses OpenAI ChatGPT under the hood. It sends the full chat history to the OpenAI API."""
+    # TODO Oleksandr: find a prompt format that allows full chat history to be passed
+    last_message = await ctx.request_messages.amaterialize_concluding_content()
+    last_message = last_message.strip()
+
+    prompt = [
+        {
+            "content": CHOOSE_TOOL_PROMPT,
+            "role": "system",
+        },
+        {
+            "content": f"Question: {last_message}\nThought:",
+            "role": "user",
+        },
+    ]
+    query_msg_content = await fast_gpt_completion(prompt=prompt, stop="\nObservation:").amaterialize_content()
+    query = query_msg_content.split("Action Input:")[1].strip()
+
+    pdf_content = await pdf_finder_agent.quick_call(
+        # TODO Oleksandr: introduce "reply_to" feature in the message tree and use it instead of agent kwarg ?
+        query,
+        original_question=last_message,
+    ).amaterialize_concluding_content()
+
     prompt = [
         {
             "content": GAIA_SYSTEM_PROMPT,
@@ -151,9 +166,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             "role": "system",
         },
         {
-            "content": (
-                await pdf_finder_agent.quick_call(ctx.request_messages).amaterialize_concluding_message()
-            ).content,
+            "content": pdf_content,
             "role": "user",
         },
         {
@@ -163,17 +176,12 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
         # TODO Oleksandr: should be possible to just send ctx.request_messages instead of *...
         *await ctx.request_messages.amaterialize_full_history(),
     ]
-    ctx.respond(gpt4_completion(prompt=prompt, **kwargs))
+    ctx.respond(slow_gpt_completion(prompt=prompt, **kwargs))
 
 
-async def main() -> None:
-    """Run the assistant."""
-
-    question = (
-        "What was the volume in m^3 of the fish bag that was calculated in the University of Leicester paper "
-        '"Can Hiccup Supply Enough Fish to Maintain a Dragon’s Diet?"'
-    )
-    print("\nQUESTION:", question)
+async def run_assistant(question: str) -> str:
+    """Run the assistant. Return the final answer in upper case."""
+    print("\n\nQUESTION:", question)
 
     assistant_responses = gaia_agent.quick_call(question, stream=True)
 
@@ -183,3 +191,20 @@ async def main() -> None:
             print(token.text, end="", flush=True)
         print("\033[0m")
     print()
+
+    final_answer = await assistant_responses.amaterialize_concluding_content()
+    final_answer = final_answer.upper()
+    final_answer = final_answer.split("FINAL ANSWER:")[1].strip()
+    return final_answer
+
+
+async def main() -> None:
+    """
+    Run the assistant on a question from the GAIA dataset.
+    """
+    question = (
+        "In Series 9, Episode 11 of Doctor Who, the Doctor is trapped inside an ever-shifting maze. What is this "
+        "location called in the official script for the episode? Give the setting exactly as it appears in the "
+        "first scene heading."
+    )
+    await run_assistant(question)
