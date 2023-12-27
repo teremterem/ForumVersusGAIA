@@ -15,6 +15,6 @@ from forum_versus_gaia import forum_versus_gaia_config
 warnings.filterwarnings("ignore", module="pydantic")
 
 if __name__ == "__main__":
-    from forum_versus_gaia.very_first_task import main
+    from forum_versus_gaia.gaia_agent import main
 
     asyncio.run(main())
