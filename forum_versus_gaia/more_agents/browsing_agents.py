@@ -10,14 +10,14 @@ from serpapi import GoogleSearch
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion
 
-EXTRACT_URL_PROMPT = """\
-Your name is FindPDF. You will be provided with a SerpAPI JSON response that contains a list of search results for \
-a given user query. The user is looking for a PDF document. Your job is to extract a URL that, in your opinion, \
+EXTRACT_PDF_URL_PROMPT = """\
+Your name is {AGENT_ALIAS}. You will be provided with a SerpAPI JSON response that contains a list of search results \
+for a given user query. The user is looking for a PDF document. Your job is to extract a URL that, in your opinion, \
 is the most likely to contain the PDF document the user is looking for.\
 """
 
-EXTRACT_URL_FROM_PAGE_PROMPT = """\
-Your name is FindPDF. You will be provided with the content of a web page that was found via web search with a \
+EXTRACT_PDF_URL_FROM_PAGE_PROMPT = """\
+Your name is {AGENT_ALIAS}. You will be provided with the content of a web page that was found via web search with a \
 given user query. The user is looking for a PDF document. Your job is to extract from this web page a URL that, in \
 your opinion, is the most likely to lead to the PDF document the user is looking for.\
 """
@@ -46,7 +46,7 @@ async def pdf_finder_agent(ctx: InteractionContext, original_question: str = "")
 
     prompt = [
         {
-            "content": EXTRACT_URL_PROMPT,
+            "content": EXTRACT_PDF_URL_PROMPT.format(AGENT_ALIAS=ctx.this_agent.agent_alias),
             "role": "system",
         },
         {
@@ -74,7 +74,7 @@ async def pdf_finder_agent(ctx: InteractionContext, original_question: str = "")
 
         prompt = [
             {
-                "content": EXTRACT_URL_FROM_PAGE_PROMPT,
+                "content": EXTRACT_PDF_URL_FROM_PAGE_PROMPT.format(AGENT_ALIAS=ctx.this_agent.agent_alias),
                 "role": "system",
             },
             {
