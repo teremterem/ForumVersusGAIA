@@ -40,11 +40,16 @@ Begin!\
 
 @forum.agent
 async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
-    """An agent that uses OpenAI ChatGPT under the hood. It sends the full chat history to the OpenAI API."""
-    agents = [pdf_finder_agent]
+    """
+    A general AI assistant that can answer questions that require research.
+    """
+    agents = [
+        # browsing_agent,
+        pdf_finder_agent,
+    ]
 
-    agent_names = ", ".join(agent.agent_alias for agent in agents)
-    agent_descriptions = "\n".join(f"{agent.agent_alias}: {agent.agent_description}" for agent in agents)
+    agent_names = ", ".join(agent.alias for agent in agents)
+    agent_descriptions = "\n".join(f"{agent.alias}: {agent.description}" for agent in agents)
 
     # TODO Oleksandr: find a prompt format that allows full chat history to be passed ?
     question = await ctx.request_messages.amaterialize_concluding_content()
@@ -63,7 +68,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     query_msg_content = await fast_gpt_completion(prompt=prompt, stop="\nObservation:").amaterialize_content()
     query = query_msg_content.split("Action Input:")[1].strip()
 
-    pdf_content = await pdf_finder_agent.quick_call(
+    content = await pdf_finder_agent.quick_call(
         # TODO Oleksandr: introduce "reply_to" feature in the message tree and use it instead of agent kwarg ?
         query,
         original_question=question,
@@ -75,11 +80,11 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             "role": "system",
         },
         {
-            "content": "In order to answer the question use the following content of a PDF document:",
+            "content": "In order to answer the question use the following info:",
             "role": "system",
         },
         {
-            "content": pdf_content,
+            "content": content,
             "role": "user",
         },
         {
