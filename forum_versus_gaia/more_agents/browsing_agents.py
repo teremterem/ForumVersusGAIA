@@ -65,7 +65,7 @@ async def pdf_finder_agent(ctx: InteractionContext, original_question: str = "")
     ]
     page_url = (await fast_gpt_completion(prompt=prompt).amaterialize_content()).strip()
 
-    async with httpx.AsyncClient(follow_redirects=True) as httpx_client:
+    async with get_httpx_client() as httpx_client:
         for _ in range(5):
             httpx_response = await httpx_client.get(page_url)
             # check if mimetype is pdf
@@ -134,10 +134,17 @@ async def browsing_agent(ctx: InteractionContext, original_question: str = "") -
     ]
     page_url = (await fast_gpt_completion(prompt=prompt).amaterialize_content()).strip()
 
-    async with httpx.AsyncClient(follow_redirects=True) as httpx_client:
+    async with get_httpx_client() as httpx_client:
         httpx_response = await httpx_client.get(page_url)
 
     ctx.respond(httpx_response.text)
+
+
+def get_httpx_client() -> httpx.AsyncClient:
+    """
+    Returns a httpx client with the settings we want.
+    """
+    return httpx.AsyncClient(follow_redirects=True, verify=False)
 
 
 def get_serpapi_results(query: str, remove_gaia_links: bool = REMOVE_GAIA_LINKS) -> list[dict[str, Any]]:
