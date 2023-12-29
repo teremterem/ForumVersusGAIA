@@ -3,7 +3,7 @@ GAIA validation set. Level 1 samples that involve finding and reading PDF files.
 """
 import pytest
 
-from forum_versus_gaia.very_first_task import run_assistant
+from forum_versus_gaia.gaia_agent import run_assistant
 
 
 @pytest.mark.skip
