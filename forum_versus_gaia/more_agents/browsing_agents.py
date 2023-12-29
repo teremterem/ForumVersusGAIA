@@ -3,6 +3,7 @@ import io
 import json
 import os
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 import pypdf
@@ -10,6 +11,7 @@ from agentforum.forum import InteractionContext
 from serpapi import GoogleSearch
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion, REMOVE_GAIA_LINKS
+from forum_versus_gaia.utils import NotAUrlError
 
 EXTRACT_PDF_URL_PROMPT = """\
 Your name is {AGENT_ALIAS}. You will be provided with a SerpAPI JSON response that contains a list of search results \
@@ -64,6 +66,7 @@ async def pdf_finder_agent(ctx: InteractionContext, original_question: str = "")
         },
     ]
     page_url = (await fast_gpt_completion(prompt=prompt).amaterialize_content()).strip()
+    assert_valid_url(page_url)
 
     async with get_httpx_client() as httpx_client:
         for _ in range(5):
@@ -93,6 +96,7 @@ async def pdf_finder_agent(ctx: InteractionContext, original_question: str = "")
                 },
             ]
             page_url = (await fast_gpt_completion(prompt=prompt).amaterialize_content()).strip()
+            assert_valid_url(page_url)
         else:
             raise RuntimeError("Could not find a PDF document.")  # TODO Oleksandr: custom exception ?
 
@@ -104,7 +108,7 @@ async def pdf_finder_agent(ctx: InteractionContext, original_question: str = "")
 @forum.agent
 async def browsing_agent(ctx: InteractionContext, original_question: str = "") -> None:
     """
-    Using a search engine finds and returns from the internet a web page that satisfy a search query. Input should
+    Using a search engine finds and returns from the internet a web page that satisfies a search query. Input should
     be a search query.
     """
     query = await ctx.request_messages.amaterialize_concluding_content()
@@ -133,11 +137,24 @@ async def browsing_agent(ctx: InteractionContext, original_question: str = "") -
         },
     ]
     page_url = (await fast_gpt_completion(prompt=prompt).amaterialize_content()).strip()
+    assert_valid_url(page_url)
 
     async with get_httpx_client() as httpx_client:
         httpx_response = await httpx_client.get(page_url)
 
     ctx.respond(httpx_response.text)
+
+
+def assert_valid_url(url: str) -> None:
+    """
+    Raises an exception if the given URL is not valid.
+    """
+    try:
+        result = urlparse(url)
+        if not all([result.scheme, result.netloc]):
+            raise ValueError
+    except ValueError as exc:
+        raise NotAUrlError(url) from exc
 
 
 def get_httpx_client() -> httpx.AsyncClient:
