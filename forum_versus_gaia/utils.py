@@ -6,6 +6,7 @@ from typing import Any
 from typing import Iterable
 from urllib.parse import urlparse
 
+import html2text
 import httpx
 from agentforum.models import Message
 from serpapi import GoogleSearch
@@ -72,3 +73,12 @@ def get_serpapi_results(query: str, remove_gaia_links: bool = REMOVE_GAIA_LINKS)
             if "gaia-benchmark" not in organic_result["link"].lower() and "2311.12983" not in organic_result["link"]
         ]
     return organic_results
+
+
+def convert_html_to_markdown(html: str, baseurl: str = "") -> str:
+    """
+    Convert HTML to markdown (the best effort).
+    """
+    h = html2text.HTML2Text(baseurl=baseurl)
+    h.ignore_links = False
+    return h.handle(html)

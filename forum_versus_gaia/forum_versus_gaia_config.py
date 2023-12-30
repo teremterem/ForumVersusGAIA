@@ -15,6 +15,7 @@ import promptlayer
 async_openai_client = promptlayer.openai.AsyncOpenAI()
 
 FAST_GPT = "gpt-3.5-turbo-1106"
+# FAST_GPT = "gpt-4-1106-preview"
 SLOW_GPT = "gpt-4-1106-preview"
 # SLOW_GPT = "gpt-3.5-turbo-1106"
 

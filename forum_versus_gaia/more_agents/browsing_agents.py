@@ -12,6 +12,7 @@ from forum_versus_gaia.utils import (
     assert_valid_url,
     get_httpx_client,
     is_valid_url,
+    convert_html_to_markdown,
 )
 
 EXTRACT_PDF_URL_PROMPT = """\
@@ -59,8 +60,13 @@ async def pdf_finder_agent(ctx: InteractionContext, recursion: int = 5) -> None:
             ctx.respond(pdf_text)
             return
 
+        if "text/html" not in httpx_response.headers["content-type"]:
+            raise RuntimeError(
+                f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead."
+            )
+
         prompt_header = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
-        prompt_context = f"PAGE CONTENT:\n\n{httpx_response.text}"
+        prompt_context = f"PAGE CONTENT:\n\n{convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)}"
 
     else:
         organic_results = get_serpapi_results(query_or_url)
