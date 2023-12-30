@@ -1,7 +1,7 @@
 """
 Try out a question from the GAIA dataset.
 """
-from agentforum.forum import InteractionContext
+from agentforum.forum import InteractionContext, ConversationTracker
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion, slow_gpt_completion
 from forum_versus_gaia.more_agents.browsing_agents import pdf_finder_agent
@@ -69,9 +69,12 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     query = query_msg_content.split("Action Input:")[1].strip()
 
     content = await pdf_finder_agent.quick_call(
-        # TODO Oleksandr: introduce "reply_to" feature in the message tree and use it instead of agent kwarg ?
         query,
-        original_question=question,
+        # TODO Oleksandr: make it possible to pass `branch_from` to `quick_call` and `call` directly
+        # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message id
+        #  or even a message sequence (but not your own list of messages ?)
+        conversation=ConversationTracker(forum, branch_from=await ctx.request_messages.aget_concluding_msg_promise()),
+        # TODO Oleksandr: introduce `reply_to` feature for this particular scenario instead of `branch_from` ?
     ).amaterialize_concluding_content()
 
     prompt = [
@@ -97,7 +100,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     ctx.respond(slow_gpt_completion(prompt=prompt, **kwargs))
 
 
-async def run_assistant(question: str) -> str:
+async def arun_assistant(question: str) -> str:
     """Run the assistant. Return the final answer in upper case."""
     print("\n\nQUESTION:", question)
 
@@ -116,7 +119,7 @@ async def run_assistant(question: str) -> str:
     return final_answer
 
 
-async def main() -> None:
+async def amain() -> None:
     """
     Run the assistant on a question from the GAIA dataset.
     """
@@ -124,4 +127,4 @@ async def main() -> None:
         "What was the volume in m^3 of the fish bag that was calculated in the University of Leicester paper "
         '"Can Hiccup Supply Enough Fish to Maintain a Dragon’s Diet?"'
     )
-    await run_assistant(question)
+    await arun_assistant(question)

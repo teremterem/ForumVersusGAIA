@@ -11,7 +11,7 @@ from agentforum.forum import InteractionContext
 from serpapi import GoogleSearch
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion, REMOVE_GAIA_LINKS
-from forum_versus_gaia.utils import NotAUrlError
+from forum_versus_gaia.utils import NotAUrlError, render_conversation
 
 EXTRACT_PDF_URL_PROMPT = """\
 Your name is {AGENT_ALIAS}. You will be provided with a SerpAPI JSON response that contains a list of search results \
@@ -33,15 +33,16 @@ your opinion, is the most likely to lead to the PDF document the user is looking
 
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext, original_question: str = "") -> None:
+async def pdf_finder_agent(ctx: InteractionContext) -> None:
     """
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
     a webpage. Input should be a search query. (NOTE: {AGENT_ALIAS} already knows that its job is to look for PDFs,
     so you shouldn’t include the word “PDF” in your query.)
     """
-    query = await ctx.request_messages.amaterialize_concluding_content()
-    query = query.strip()
+    full_conversation = await ctx.request_messages.amaterialize_full_history()
+    full_conversation_str = render_conversation(full_conversation)
+    query = full_conversation[-1].content.strip()
 
     organic_results = get_serpapi_results(query)
 
@@ -51,9 +52,7 @@ async def pdf_finder_agent(ctx: InteractionContext, original_question: str = "")
             "role": "system",
         },
         {
-            "content": (
-                f"USER QUERY: {query}\n\nTHE ORIGINAL QUESTION THIS QUERY WAS DERIVED FROM: {original_question}"
-            ),
+            "content": full_conversation_str,
             "role": "user",
         },
         {
@@ -68,6 +67,8 @@ async def pdf_finder_agent(ctx: InteractionContext, original_question: str = "")
     page_url = (await fast_gpt_completion(prompt=prompt).amaterialize_content()).strip()
     assert_valid_url(page_url)
 
+    # TODO TODO TODO
+
     async with get_httpx_client() as httpx_client:
         for _ in range(5):
             httpx_response = await httpx_client.get(page_url)
@@ -81,9 +82,7 @@ async def pdf_finder_agent(ctx: InteractionContext, original_question: str = "")
                     "role": "system",
                 },
                 {
-                    "content": (
-                        f"USER QUERY: {query}\n\nTHE ORIGINAL QUESTION THIS QUERY WAS DERIVED FROM: {original_question}"
-                    ),
+                    "content": full_conversation_str,
                     "role": "user",
                 },
                 {
