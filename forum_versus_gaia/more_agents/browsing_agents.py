@@ -1,17 +1,18 @@
 """Agents that first use Google (SerpAPI) and then "click" around the web pages (follow urls)."""
 import io
 import json
-import os
-from typing import Any
-from urllib.parse import urlparse
 
-import httpx
 import pypdf
-from agentforum.forum import InteractionContext
-from serpapi import GoogleSearch
+from agentforum.forum import InteractionContext, ConversationTracker
 
-from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion, REMOVE_GAIA_LINKS
-from forum_versus_gaia.utils import NotAUrlError, render_conversation
+from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion
+from forum_versus_gaia.utils import (
+    render_conversation,
+    get_serpapi_results,
+    assert_valid_url,
+    get_httpx_client,
+    is_valid_url,
+)
 
 EXTRACT_PDF_URL_PROMPT = """\
 Your name is {AGENT_ALIAS}. You will be provided with a SerpAPI JSON response that contains a list of search results \
@@ -33,30 +34,51 @@ your opinion, is the most likely to lead to the PDF document the user is looking
 
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext) -> None:
+async def pdf_finder_agent(ctx: InteractionContext, recursion: int = 5) -> None:
     """
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
     a webpage. Input should be a search query. (NOTE: {AGENT_ALIAS} already knows that its job is to look for PDFs,
     so you shouldn’t include the word “PDF” in your query.)
     """
-    full_conversation = await ctx.request_messages.amaterialize_full_history()
-    full_conversation_str = render_conversation(full_conversation)
-    query = full_conversation[-1].content.strip()
+    if recursion <= 0:
+        # TODO Oleksandr: custom exception ?
+        raise RuntimeError("I couldn't find a PDF document within a reasonable number of hops.")
 
-    organic_results = get_serpapi_results(query)
+    full_conversation = await ctx.request_messages.amaterialize_full_history()
+    query_or_url = full_conversation[-1].content.strip()
+
+    if is_valid_url(query_or_url):
+        async with get_httpx_client() as httpx_client:
+            httpx_response = await httpx_client.get(query_or_url)
+
+        if httpx_response.headers["content-type"] == "application/pdf":
+            # pdf was found! returning its text
+            pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
+            pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
+            ctx.respond(pdf_text)
+            return
+
+        prompt_header = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
+        prompt_context = f"PAGE CONTENT:\n\n{httpx_response.text}"
+
+    else:
+        organic_results = get_serpapi_results(query_or_url)
+
+        prompt_header = EXTRACT_PDF_URL_PROMPT
+        prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
 
     prompt = [
         {
-            "content": EXTRACT_PDF_URL_PROMPT.format(AGENT_ALIAS=ctx.this_agent.alias),
+            "content": prompt_header.format(AGENT_ALIAS=ctx.this_agent.alias),
             "role": "system",
         },
         {
-            "content": full_conversation_str,
+            "content": render_conversation(full_conversation),
             "role": "user",
         },
         {
-            "content": f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}",
+            "content": prompt_context,
             "role": "user",
         },
         {
@@ -67,41 +89,18 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
     page_url = (await fast_gpt_completion(prompt=prompt).amaterialize_content()).strip()
     assert_valid_url(page_url)
 
-    # TODO TODO TODO
-
-    async with get_httpx_client() as httpx_client:
-        for _ in range(5):
-            httpx_response = await httpx_client.get(page_url)
-            # check if mimetype is pdf
-            if httpx_response.headers["content-type"] == "application/pdf":
-                break
-
-            prompt = [
-                {
-                    "content": EXTRACT_PDF_URL_FROM_PAGE_PROMPT.format(AGENT_ALIAS=ctx.this_agent.alias),
-                    "role": "system",
-                },
-                {
-                    "content": full_conversation_str,
-                    "role": "user",
-                },
-                {
-                    "content": f"PAGE CONTENT:\n\n{httpx_response.text}",
-                    "role": "user",
-                },
-                {
-                    "content": "PLEASE ONLY RETURN A URL AND NO OTHER TEXT.\n\nURL:",
-                    "role": "system",
-                },
-            ]
-            page_url = (await fast_gpt_completion(prompt=prompt).amaterialize_content()).strip()
-            assert_valid_url(page_url)
-        else:
-            raise RuntimeError("Could not find a PDF document.")  # TODO Oleksandr: custom exception ?
-
-    pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
-    pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
-    ctx.respond(pdf_text)
+    ctx.respond(
+        pdf_finder_agent.quick_call(
+            page_url,
+            # TODO Oleksandr: make it possible to pass `branch_from` to `quick_call` and `call` directly
+            # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message id
+            #  or even a message sequence (but not your own list of messages ?)
+            conversation=ConversationTracker(
+                forum, branch_from=await ctx.request_messages.aget_concluding_msg_promise()
+            ),
+            recursion=recursion - 1,
+        )
+    )
 
 
 @forum.agent
@@ -142,44 +141,3 @@ async def browsing_agent(ctx: InteractionContext, original_question: str = "") -
         httpx_response = await httpx_client.get(page_url)
 
     ctx.respond(httpx_response.text)
-
-
-def assert_valid_url(url: str) -> None:
-    """
-    Raises an exception if the given URL is not valid.
-    """
-    try:
-        result = urlparse(url)
-        if not all([result.scheme, result.netloc]):
-            raise ValueError
-    except ValueError as exc:
-        raise NotAUrlError(url) from exc
-
-
-def get_httpx_client() -> httpx.AsyncClient:
-    """
-    Returns a httpx client with the settings we want.
-    """
-    return httpx.AsyncClient(follow_redirects=True, verify=False)
-
-
-def get_serpapi_results(query: str, remove_gaia_links: bool = REMOVE_GAIA_LINKS) -> list[dict[str, Any]]:
-    """
-    Returns a list of organic results from SerpAPI for a given query.
-    """
-    # TODO Oleksandr: make this function async by replacing SerpAPI python client with plain aiohttp
-    search = GoogleSearch(
-        {
-            "q": query,
-            "api_key": os.environ["SERPAPI_API_KEY"],
-        }
-    )
-    organic_results = search.get_dict()["organic_results"]
-    if remove_gaia_links:
-        # we don't want the agents to look up answers in the GAIA benchmark itself
-        organic_results = [
-            organic_result
-            for organic_result in organic_results
-            if "gaia-benchmark" not in organic_result["link"].lower() and "2311.12983" not in organic_result["link"]
-        ]
-    return organic_results

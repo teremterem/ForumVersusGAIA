@@ -74,7 +74,6 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
         # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message id
         #  or even a message sequence (but not your own list of messages ?)
         conversation=ConversationTracker(forum, branch_from=await ctx.request_messages.aget_concluding_msg_promise()),
-        # TODO Oleksandr: introduce `reply_to` feature for this particular scenario instead of `branch_from` ?
     ).amaterialize_concluding_content()
 
     prompt = [
