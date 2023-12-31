@@ -9,7 +9,6 @@ from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completio
 from forum_versus_gaia.utils import (
     render_conversation,
     get_serpapi_results,
-    assert_valid_url,
     get_httpx_client,
     is_valid_url,
     convert_html_to_markdown,
@@ -18,8 +17,9 @@ from forum_versus_gaia.utils import (
 EXTRACT_PDF_URL_PROMPT = """\
 Your name is {AGENT_ALIAS}. You will be provided with a SerpAPI JSON response that contains a list of search results \
 for a given user query. The user is looking for a PDF document. Your job is to extract a URL that, in your opinion, \
-is the most likely to contain the PDF document the user is looking for.\
+is the most likely to contain the PDF document the user is looking for.
 """
+# NOTE: DO NOT TRY URLS THAT YOU ALREADY TRIED!\
 
 # EXTRACT_URL_PROMPT = """\
 # Your name is {AGENT_ALIAS}. You will be provided with a SerpAPI JSON response that contains a list of search results \
@@ -30,8 +30,9 @@ is the most likely to contain the PDF document the user is looking for.\
 EXTRACT_PDF_URL_FROM_PAGE_PROMPT = """\
 Your name is {AGENT_ALIAS}. You will be provided with the content of a web page that was found via web search with a \
 given user query. The user is looking for a PDF document. Your job is to extract from this web page a URL that, in \
-your opinion, is the most likely to lead to the PDF document the user is looking for.\
+your opinion, is the most likely to lead to the PDF document the user is looking for.
 """
+# NOTE: DO NOT TRY URLS THAT YOU ALREADY TRIED!\
 
 
 @forum.agent
@@ -42,11 +43,6 @@ async def pdf_finder_agent(ctx: InteractionContext, recursion: int = 4) -> None:
     a webpage. Input should be a search query. (NOTE: {AGENT_ALIAS} already knows that its job is to look for PDFs,
     so you shouldn’t include the word “PDF” in your query.)
     """
-    print()
-    print()
-    print(recursion)
-    print()
-    print()
     if recursion <= 0:
         # TODO Oleksandr: custom exception ?
         raise RuntimeError("I couldn't find a PDF document within a reasonable number of hops.")
@@ -62,7 +58,7 @@ async def pdf_finder_agent(ctx: InteractionContext, recursion: int = 4) -> None:
             # pdf was found! returning its text
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
-            ctx.respond(pdf_text)
+            ctx.respond(pdf_text, success=True)
             return
 
         if "text/html" not in httpx_response.headers["content-type"]:
@@ -104,15 +100,26 @@ async def pdf_finder_agent(ctx: InteractionContext, recursion: int = 4) -> None:
             "role": "system",
         },
     ]
-    page_url = (await fast_gpt_completion(prompt=prompt).amaterialize_content()).strip()
-    assert_valid_url(page_url)
+    page_url = (await fast_gpt_completion(prompt=prompt, pl_tags=[str(recursion)]).amaterialize_content()).strip()
 
-    response_msgs = await pdf_finder_agent.quick_call(
-        page_url,
-        # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message
-        #  id or even a message sequence (but not your own list of messages ?)
-        branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-        recursion=recursion - 1,
-    ).amaterialize_as_list()
-    # TODO Oleksandr: amaterialize_as_list is needed to catch exceptions here and not later - what to do about it ?
-    ctx.respond(response_msgs)
+    if is_valid_url(page_url):
+        recursive_resp_promise = await pdf_finder_agent.quick_call(
+            page_url,
+            branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+            recursion=recursion - 1,
+        ).aget_concluding_msg_promise()
+
+        # TODO Oleksandr: avoid having to specify that it is `.metadata` - it's confusing,
+        #  you don't specify it when you set it (OR make sure to specify `.metadata` everywhere)
+        if not getattr((await recursive_resp_promise.amaterialize()).metadata, "success", False):
+            recursive_resp_promise = await pdf_finder_agent.quick_call(
+                (await ctx.request_messages.aget_full_history())[-2],
+                branch_from=recursive_resp_promise,
+                recursion=recursion,
+            ).amaterialize_concluding_message()
+
+        ctx.respond(recursive_resp_promise)
+
+    else:
+        # it's not a url, it's most likely a message that tells that something went wrong
+        ctx.respond(page_url)
