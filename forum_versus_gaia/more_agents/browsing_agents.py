@@ -5,7 +5,7 @@ import json
 import pypdf
 from agentforum.forum import InteractionContext
 
-from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion
+from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion, fast_gpt_completion
 from forum_versus_gaia.utils import (
     render_conversation,
     get_serpapi_results,
@@ -46,6 +46,7 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = 4, retries: int
         # TODO Oleksandr: should it be an exception instead ?
         ctx.respond("I couldn't find a PDF document within a reasonable number of hops.")
         return
+    completion_method = slow_gpt_completion if retries < 4 else fast_gpt_completion
 
     full_conversation = await ctx.request_messages.amaterialize_full_history()
     query_or_url = full_conversation[-1].content.strip()
@@ -107,7 +108,7 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = 4, retries: int
             "role": "system",
         },
     ]
-    page_url = await fast_gpt_completion(prompt=prompt, pl_tags=[f"d{depth},r{retries}"]).amaterialize_content()
+    page_url = await completion_method(prompt=prompt, pl_tags=[f"d{depth},r{retries}"]).amaterialize_content()
     page_url = page_url.strip()
 
     if is_valid_url(page_url):

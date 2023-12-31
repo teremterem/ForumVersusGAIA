@@ -6,7 +6,6 @@ import pytest
 from forum_versus_gaia.gaia_agent import arun_assistant
 
 
-@pytest.mark.skip
 @pytest.mark.asyncio
 async def test_dragons_diet():
     """
