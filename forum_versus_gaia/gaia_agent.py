@@ -1,7 +1,7 @@
 """
 Try out a question from the GAIA dataset.
 """
-from agentforum.forum import InteractionContext, ConversationTracker
+from agentforum.forum import InteractionContext
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion, slow_gpt_completion
 from forum_versus_gaia.more_agents.browsing_agents import pdf_finder_agent
@@ -70,10 +70,9 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
 
     content = await pdf_finder_agent.quick_call(
         query,
-        # TODO Oleksandr: make it possible to pass `branch_from` to `quick_call` and `call` directly
         # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message id
         #  or even a message sequence (but not your own list of messages ?)
-        conversation=ConversationTracker(forum, branch_from=await ctx.request_messages.aget_concluding_msg_promise()),
+        branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
     ).amaterialize_concluding_content()
 
     prompt = [

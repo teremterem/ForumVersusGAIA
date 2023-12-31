@@ -3,7 +3,7 @@ import io
 import json
 
 import pypdf
-from agentforum.forum import InteractionContext, ConversationTracker
+from agentforum.forum import InteractionContext
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion
 from forum_versus_gaia.utils import (
@@ -97,10 +97,9 @@ async def pdf_finder_agent(ctx: InteractionContext, recursion: int = 5) -> None:
 
     response_msgs = await pdf_finder_agent.quick_call(
         page_url,
-        # TODO Oleksandr: make it possible to pass `branch_from` to `quick_call` and `call` directly
         # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message
         #  id or even a message sequence (but not your own list of messages ?)
-        conversation=ConversationTracker(forum, branch_from=await ctx.request_messages.aget_concluding_msg_promise()),
+        branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
         recursion=recursion - 1,
     ).amaterialize_as_list()
     # TODO Oleksandr: amaterialize_as_list is needed to catch exceptions here and not later - what to do about it ?
