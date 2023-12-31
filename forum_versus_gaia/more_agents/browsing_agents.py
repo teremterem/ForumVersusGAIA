@@ -17,9 +17,8 @@ from forum_versus_gaia.utils import (
 EXTRACT_PDF_URL_PROMPT = """\
 Your name is {AGENT_ALIAS}. You will be provided with a SerpAPI JSON response that contains a list of search results \
 for a given user query. The user is looking for a PDF document. Your job is to extract a URL that, in your opinion, \
-is the most likely to contain the PDF document the user is looking for.
+is the most likely to contain the PDF document the user is looking for.\
 """
-# NOTE: DO NOT TRY URLS THAT YOU ALREADY TRIED!\
 
 # EXTRACT_URL_PROMPT = """\
 # Your name is {AGENT_ALIAS}. You will be provided with a SerpAPI JSON response that contains a list of search results \
@@ -30,22 +29,23 @@ is the most likely to contain the PDF document the user is looking for.
 EXTRACT_PDF_URL_FROM_PAGE_PROMPT = """\
 Your name is {AGENT_ALIAS}. You will be provided with the content of a web page that was found via web search with a \
 given user query. The user is looking for a PDF document. Your job is to extract from this web page a URL that, in \
-your opinion, is the most likely to lead to the PDF document the user is looking for.
+your opinion, is the most likely to lead to the PDF document the user is looking for.\
 """
-# NOTE: DO NOT TRY URLS THAT YOU ALREADY TRIED!\
 
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext, recursion: int = 4) -> None:
+async def pdf_finder_agent(ctx: InteractionContext, depth: int = 4, retries: int = 4) -> None:
     """
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
     a webpage. Input should be a search query. (NOTE: {AGENT_ALIAS} already knows that its job is to look for PDFs,
     so you shouldn’t include the word “PDF” in your query.)
     """
-    if recursion <= 0:
-        # TODO Oleksandr: custom exception ?
-        raise RuntimeError("I couldn't find a PDF document within a reasonable number of hops.")
+    # pylint: disable=too-many-locals
+    if depth <= 0 or retries <= 0:
+        # TODO Oleksandr: should it be an exception instead ?
+        ctx.respond("I couldn't find a PDF document within a reasonable number of hops.")
+        return
 
     full_conversation = await ctx.request_messages.amaterialize_full_history()
     query_or_url = full_conversation[-1].content.strip()
@@ -67,7 +67,10 @@ async def pdf_finder_agent(ctx: InteractionContext, recursion: int = 4) -> None:
             )
 
         prompt_header = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
-        prompt_context = f"PAGE CONTENT:\n\n{convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)}"
+        prompt_context = (
+            f"BELOW IS THE CONTENT OF A WEB PAGE FOUND AT {query_or_url}\n=====\n\n"
+            f"{convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)}"
+        )
 
     else:
         organic_results = get_serpapi_results(query_or_url)
@@ -81,10 +84,11 @@ async def pdf_finder_agent(ctx: InteractionContext, recursion: int = 4) -> None:
             "role": "system",
         },
         {
-            "content": render_conversation(
+            "content": "BELOW ARE THE STEPS THAT WERE TRIED SO FAR\n=====\n\n"
+            + render_conversation(
                 full_conversation,
                 alias_renderer=lambda msg: (
-                    (f"{msg.sender_alias}: NAVIGATE TO" if is_valid_url(msg.content.strip()) else msg.sender_alias)
+                    f"{msg.sender_alias} - {'NAVIGATE TO' if is_valid_url(msg.content.strip()) else 'RESULT'}"
                     if msg.sender_alias == ctx.this_agent.alias
                     else "USER"
                 ),
@@ -96,26 +100,35 @@ async def pdf_finder_agent(ctx: InteractionContext, recursion: int = 4) -> None:
             "role": "user",
         },
         {
-            "content": "PLEASE ONLY RETURN A URL AND NO OTHER TEXT.\n\nURL:",
+            "content": (
+                "PLEASE ONLY RETURN A URL AND NO OTHER TEXT. "
+                "MAKE SURE NOT TO RETURN THE URLS THAT WERE ALREADY TRIED.\n\nURL:"
+            ),
             "role": "system",
         },
     ]
-    page_url = (await fast_gpt_completion(prompt=prompt, pl_tags=[str(recursion)]).amaterialize_content()).strip()
+    page_url = await fast_gpt_completion(prompt=prompt, pl_tags=[f"d{depth},r{retries}"]).amaterialize_content()
+    page_url = page_url.strip()
 
     if is_valid_url(page_url):
         recursive_resp_promise = await pdf_finder_agent.quick_call(
             page_url,
             branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-            recursion=recursion - 1,
+            depth=depth - 1,
+            retries=retries,
         ).aget_concluding_msg_promise()
 
         # TODO Oleksandr: avoid having to specify that it is `.metadata` - it's confusing,
         #  you don't specify it when you set it (OR make sure to specify `.metadata` everywhere)
         if not getattr((await recursive_resp_promise.amaterialize()).metadata, "success", False):
+            # PDF was not found, let's try again
+            current_request = await ctx.request_messages.amaterialize_concluding_message()
             recursive_resp_promise = await pdf_finder_agent.quick_call(
-                (await ctx.request_messages.aget_full_history())[-2],
+                current_request,
+                override_sender_alias=current_request.get_original_msg().sender_alias,
                 branch_from=recursive_resp_promise,
-                recursion=recursion,
+                depth=depth,
+                retries=retries - 1,
             ).amaterialize_concluding_message()
 
         ctx.respond(recursive_resp_promise)

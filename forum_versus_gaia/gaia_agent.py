@@ -65,7 +65,9 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             "role": "user",
         },
     ]
-    query_msg_content = await fast_gpt_completion(prompt=prompt, stop="\nObservation:").amaterialize_content()
+    query_msg_content = await fast_gpt_completion(
+        prompt=prompt, stop="\nObservation:", pl_tags=["START"]
+    ).amaterialize_content()
     query = query_msg_content.split("Action Input:")[1].strip()
 
     content = await pdf_finder_agent.quick_call(
