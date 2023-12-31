@@ -35,13 +35,18 @@ your opinion, is the most likely to lead to the PDF document the user is looking
 
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext, recursion: int = 5) -> None:
+async def pdf_finder_agent(ctx: InteractionContext, recursion: int = 4) -> None:
     """
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
     a webpage. Input should be a search query. (NOTE: {AGENT_ALIAS} already knows that its job is to look for PDFs,
     so you shouldn’t include the word “PDF” in your query.)
     """
+    print()
+    print()
+    print(recursion)
+    print()
+    print()
     if recursion <= 0:
         # TODO Oleksandr: custom exception ?
         raise RuntimeError("I couldn't find a PDF document within a reasonable number of hops.")
@@ -80,7 +85,14 @@ async def pdf_finder_agent(ctx: InteractionContext, recursion: int = 5) -> None:
             "role": "system",
         },
         {
-            "content": render_conversation(full_conversation),
+            "content": render_conversation(
+                full_conversation,
+                alias_renderer=lambda msg: (
+                    (f"{msg.sender_alias}: NAVIGATE TO" if is_valid_url(msg.content.strip()) else msg.sender_alias)
+                    if msg.sender_alias == ctx.this_agent.alias
+                    else "USER"
+                ),
+            ),
             "role": "user",
         },
         {

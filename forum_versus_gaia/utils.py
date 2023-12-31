@@ -2,7 +2,7 @@
 Utilities for the ForumVersusGaia project.
 """
 import os
-from typing import Any
+from typing import Any, Callable
 from typing import Iterable
 from urllib.parse import urlparse
 
@@ -22,9 +22,11 @@ class NotAUrlError(Exception):
     """
 
 
-def render_conversation(conversation: Iterable[Message]) -> str:
+def render_conversation(
+    conversation: Iterable[Message], alias_renderer: Callable[[Message], str] = lambda msg: msg.sender_alias
+) -> str:
     """Render a conversation as a string."""
-    return "\n\n".join([f"{msg.sender_alias}: {msg.content.strip()}" for msg in conversation])
+    return "\n\n".join([f"{alias_renderer(msg)}: {msg.content.strip()}" for msg in conversation])
 
 
 def is_valid_url(text: str) -> bool:
