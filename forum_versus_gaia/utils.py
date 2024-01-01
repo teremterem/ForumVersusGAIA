@@ -15,11 +15,23 @@ from serpapi import GoogleSearch
 from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS
 
 
-class NotAUrlError(Exception):
+class ForumVersusGaiaError(Exception):
+    """
+    Base class for all exceptions in the ForumVersusGaia project.
+    """
+
+
+class NotAUrlError(ForumVersusGaiaError):
     """
     Raised when a string is not a valid URL. the message should only contain the invalid URL and nothing else (because
     it is most likely a message produced by an LLM explaining why the actual url could not be obtained, which was
     returned by the LLM instead of the URL).
+    """
+
+
+class TooManyStepsError(ForumVersusGaiaError):
+    """
+    Raised when an agent takes too many steps to complete.
     """
 
 

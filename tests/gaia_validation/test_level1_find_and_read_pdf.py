@@ -32,3 +32,17 @@ async def test_doctor_who_location():
     answer = await arun_assistant(question)
     # TODO Oleksandr: fix the assistant so it only returns "THE CASTLE" and no other text
     assert "THE CASTLE" in answer
+
+
+@pytest.mark.asyncio
+async def test_nasa_award():
+    """
+    Test that the question about NASA award number for R. G. Arendt's work is answered correctly.
+    """
+    question = (
+        "On June 6, 2023, an article by Carolyn Collins Petersen was published in Universe Today. This article "
+        "mentions a team that produced a paper about their observations, linked at the bottom of the article. "
+        "Find this paper. Under what NASA award number was the work performed by R. G. Arendt supported by?"
+    )
+    answer = await arun_assistant(question)
+    assert answer == "80GSFC21M0002"

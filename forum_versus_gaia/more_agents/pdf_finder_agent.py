@@ -14,6 +14,8 @@ from forum_versus_gaia.utils import (
     get_httpx_client,
     is_valid_url,
     convert_html_to_markdown,
+    TooManyStepsError,
+    ForumVersusGaiaError,
 )
 
 EXTRACT_PDF_URL_PROMPT = """\
@@ -28,12 +30,32 @@ given user query. The user is looking for a PDF document. Your job is to extract
 your opinion, is the most likely to lead to the PDF document the user is looking for.\
 """
 
+# TODO Oleksandr: simplify this prompt - there is only one "tool", no need for it to be so fancy
+CHOOSE_TOOL_PROMPT = """\
+Answer the following questions as best you can. You have access to the following tools:
+
+{AGENT_DESCRIPTIONS}
+
+Use the following format:
+
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{AGENT_NAMES}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
+
+Begin!\
+"""
+
 MAX_DEPTH = 5
 MAX_RETRIES = 3
 
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retries: int = MAX_RETRIES) -> None:
+async def pdf_finder_agent(ctx: InteractionContext) -> None:
     """
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
@@ -41,10 +63,68 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
     so you shouldn’t include "PDF" or "filetype:pdf" or anything like that in your query. Also, don't try to search
     for any specific information that might be contained in the PDF, just search for the PDF itself.)
     """
+    agent_names = ctx.this_agent.alias
+    agent_descriptions = f"{ctx.this_agent.alias}: {ctx.this_agent.description}"
+
+    # TODO Oleksandr: find a prompt format that allows full chat history to be passed ?
+    question = await ctx.request_messages.amaterialize_concluding_content()
+    question = question.strip()
+
+    prompt = [
+        {
+            "content": CHOOSE_TOOL_PROMPT.format(AGENT_NAMES=agent_names, AGENT_DESCRIPTIONS=agent_descriptions),
+            "role": "system",
+        },
+        {
+            "content": f"Question: {question}\nThought:",
+            "role": "user",
+        },
+    ]
+    query_msg_content = await fast_gpt_completion(
+        prompt=prompt, stop="\nObservation:", pl_tags=["START"]
+    ).amaterialize_content()
+    query = query_msg_content.split("Action Input:")[1].strip()
+
+    try:
+        pdf_msg = await pdf_finder_no_proxy.quick_call(
+            query,
+            # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message
+            #  id or even a message sequence (but not your own list of messages ?)
+            branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+            first_try=True,
+            retries=1,
+        ).amaterialize_concluding_message()
+
+    except ForumVersusGaiaError:
+        query_msg_content = await slow_gpt_completion(
+            prompt=prompt, stop="\nObservation:", pl_tags=["RETRY"]
+        ).amaterialize_content()
+        query = query_msg_content.split("Action Input:")[1].strip()
+
+        pdf_msg = await pdf_finder_no_proxy.quick_call(
+            query,
+            # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message
+            #  id or even a message sequence (but not your own list of messages ?)
+            branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+            first_try=False,
+        ).amaterialize_concluding_message()
+
+    ctx.respond(pdf_msg)
+
+
+@forum.agent
+async def pdf_finder_no_proxy(
+    ctx: InteractionContext, first_try: bool, depth: int = MAX_DEPTH, retries: int = MAX_RETRIES
+) -> None:
+    """
+    TODO Oleksandr: introduce the concept of proxy agents at the level of the AgentForum framework
+    """
     # pylint: disable=too-many-locals
     if depth <= 0 or retries <= 0:
-        # TODO Oleksandr: should it be an exception instead ?
-        ctx.respond("I couldn't find a PDF document within a reasonable number of steps.")
+        error_message = "I couldn't find a PDF document within a reasonable number of steps."
+        if first_try:
+            raise TooManyStepsError(error_message)
+        ctx.respond(error_message)
         return
 
     query_or_url = await ctx.request_messages.amaterialize_concluding_content()
@@ -89,14 +169,15 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
         ctx=ctx,
         prompt_header_template=prompt_header_template,
         prompt_context=prompt_context,
+        first_try=first_try,
         pl_tags=[f"d{depth},r{retries}"],
-        is_a_retry=retries < MAX_RETRIES,
     )
 
     if is_valid_url(page_url):
-        recursive_resp_promise = await pdf_finder_agent.quick_call(
+        recursive_resp_promise = await pdf_finder_no_proxy.quick_call(
             page_url,
             branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+            first_try=first_try,
             depth=depth - 1,
             retries=retries,
         ).aget_concluding_msg_promise()
@@ -106,10 +187,11 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
         if not getattr((await recursive_resp_promise.amaterialize()).metadata, "success", False):
             # PDF was not found, let's try again
             current_request = await ctx.request_messages.amaterialize_concluding_message()
-            recursive_resp_promise = await pdf_finder_agent.quick_call(
+            recursive_resp_promise = await pdf_finder_no_proxy.quick_call(
                 current_request,
                 override_sender_alias=current_request.get_original_msg().sender_alias,
                 branch_from=recursive_resp_promise,
+                first_try=first_try,
                 depth=depth,
                 retries=retries - 1,
             ).amaterialize_concluding_message()
@@ -118,6 +200,8 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
 
     else:
         # it's not a url, it's most likely a message that tells that something went wrong
+        if first_try:
+            raise ForumVersusGaiaError(page_url)
         ctx.respond(page_url)
 
 
@@ -125,8 +209,8 @@ async def talk_to_gpt(
     ctx: InteractionContext,
     prompt_header_template: str,
     prompt_context: str,
+    first_try: bool,
     pl_tags: list[str] = (),
-    is_a_retry: bool = False,
 ):
     """
     Talk to GPT to get the next URL to navigate to.
@@ -159,7 +243,7 @@ async def talk_to_gpt(
             "role": "system",
         },
     ]
-    completion_method = slow_gpt_completion if is_a_retry else fast_gpt_completion
+    completion_method = fast_gpt_completion if first_try else slow_gpt_completion
     page_url = await completion_method(prompt=prompt, pl_tags=pl_tags).amaterialize_content()
     return page_url.strip()
 

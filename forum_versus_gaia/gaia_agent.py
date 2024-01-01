@@ -3,7 +3,7 @@ Try out a question from the GAIA dataset.
 """
 from agentforum.forum import InteractionContext
 
-from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion, slow_gpt_completion
+from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion
 from forum_versus_gaia.more_agents.pdf_finder_agent import pdf_finder_agent
 
 GAIA_SYSTEM_PROMPT = """\
@@ -18,65 +18,13 @@ If you are asked for a comma separated list, apply the above rules depending of 
 list is a number or a string.\
 """
 
-CHOOSE_TOOL_PROMPT = """\
-Answer the following questions as best you can. You have access to the following tools:
-
-{AGENT_DESCRIPTIONS}
-
-Use the following format:
-
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{AGENT_NAMES}]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
-
-Begin!\
-"""
-
 
 @forum.agent
 async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     """
     A general AI assistant that can answer questions that require research.
     """
-    agents = [
-        # browsing_agent,
-        pdf_finder_agent,
-    ]
-
-    agent_names = ", ".join(agent.alias for agent in agents)
-    agent_descriptions = "\n".join(f"{agent.alias}: {agent.description}" for agent in agents)
-
-    # TODO Oleksandr: find a prompt format that allows full chat history to be passed ?
-    question = await ctx.request_messages.amaterialize_concluding_content()
-    question = question.strip()
-
-    prompt = [
-        {
-            "content": CHOOSE_TOOL_PROMPT.format(AGENT_NAMES=agent_names, AGENT_DESCRIPTIONS=agent_descriptions),
-            "role": "system",
-        },
-        {
-            "content": f"Question: {question}\nThought:",
-            "role": "user",
-        },
-    ]
-    query_msg_content = await fast_gpt_completion(
-        prompt=prompt, stop="\nObservation:", pl_tags=["START"]
-    ).amaterialize_content()
-    query = query_msg_content.split("Action Input:")[1].strip()
-
-    content = await pdf_finder_agent.quick_call(
-        query,
-        # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message id
-        #  or even a message sequence (but not your own list of messages ?)
-        branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-    ).amaterialize_concluding_content()
-
+    content = await pdf_finder_agent.quick_call(ctx.request_messages).amaterialize_concluding_content()
     prompt = [
         {
             "content": GAIA_SYSTEM_PROMPT,
