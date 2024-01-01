@@ -4,7 +4,7 @@ Try out a question from the GAIA dataset.
 from agentforum.forum import InteractionContext
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion, slow_gpt_completion
-from forum_versus_gaia.more_agents.browsing_agents import pdf_finder_agent
+from forum_versus_gaia.more_agents.pdf_finder_agent import pdf_finder_agent
 
 GAIA_SYSTEM_PROMPT = """\
 You are a general AI assistant. I will ask you a question. Report your thoughts, and finish your answer with the \

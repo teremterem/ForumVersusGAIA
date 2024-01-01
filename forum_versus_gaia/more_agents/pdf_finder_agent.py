@@ -1,4 +1,6 @@
-"""Agents that first use Google (SerpAPI) and then "click" around the web pages (follow urls)."""
+"""
+This module contains an agent that finds PDF documents on the internet.
+"""
 import io
 import json
 
