@@ -75,6 +75,8 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
         prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
 
     else:
+        # remove quotes from the query
+        query_or_url = query_or_url.replace('"', "")
         print("\n\033[90mSEARCHING PDF:", query_or_url, "\033[0m")
 
         organic_results = get_serpapi_results(query_or_url)
@@ -83,7 +85,7 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
         prompt_header_template = EXTRACT_PDF_URL_PROMPT
         prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
 
-    prompt_context = remove_tried_urls(prompt_context, already_tried_urls)
+    prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
     page_url = await talk_to_gpt(
         ctx=ctx,
         prompt_header_template=prompt_header_template,
@@ -174,10 +176,10 @@ async def acollect_tried_urls(ctx: InteractionContext) -> set[str]:
     }
 
 
-def remove_tried_urls(prompt_context: str, tried_urls: set[str]) -> str:
+def remove_tried_urls_in_markdown(prompt_context: str, tried_urls: set[str]) -> str:
     """
     Remove URLs that were already tried from the prompt_context.
     """
     for url in tried_urls:
-        prompt_context = prompt_context.replace(url, "")
+        prompt_context = prompt_context.replace(f"({url})", "(#)")
     return prompt_context
