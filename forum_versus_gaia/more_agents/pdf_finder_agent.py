@@ -75,8 +75,7 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
         prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
 
     else:
-        # remove quotes from the query
-        query_or_url = query_or_url.replace('"', "")
+        # query_or_url = query_or_url.replace('"', "")
         print("\n\033[90mSEARCHING PDF:", query_or_url, "\033[0m")
 
         organic_results = get_serpapi_results(query_or_url)
