@@ -107,7 +107,7 @@ async def arun_assistant(question: str) -> str:
     assistant_responses = gaia_agent.quick_call(question, stream=True)
 
     async for response in assistant_responses:
-        print("\n\033[1m\033[36mGPT: ", end="", flush=True)
+        print("\n\033[36;1mGPT: ", end="", flush=True)
         async for token in response:
             print(token.text, end="", flush=True)
         print("\033[0m")

@@ -34,7 +34,7 @@ your opinion, is the most likely to lead to the PDF document the user is looking
 
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext, depth: int = 4, retries: int = 4) -> None:
+async def pdf_finder_agent(ctx: InteractionContext, depth: int = 5, retries: int = 3) -> None:
     """
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
@@ -44,10 +44,11 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = 4, retries: int
     # pylint: disable=too-many-locals
     if depth <= 0 or retries <= 0:
         # TODO Oleksandr: should it be an exception instead ?
-        ctx.respond("I couldn't find a PDF document within a reasonable number of hops.")
+        ctx.respond("I couldn't find a PDF document within a reasonable number of steps.")
         return
 
-    completion_method = slow_gpt_completion if retries < 4 else fast_gpt_completion
+    is_a_retry = retries < 4
+    completion_method = slow_gpt_completion if is_a_retry else fast_gpt_completion
 
     full_conversation = await ctx.request_messages.amaterialize_full_history()
     query_or_url = full_conversation[-1].content.strip()
@@ -59,7 +60,7 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = 4, retries: int
         if httpx_response.headers["content-type"] == "application/pdf":
             # pdf was found! returning its text
 
-            print("\nOPENING PDF FROM URL: ", query_or_url)
+            print("\n\033[90mOPENING PDF FROM URL:", query_or_url, "\033[0m")
 
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
@@ -71,7 +72,7 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = 4, retries: int
                 f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead."
             )
 
-        print("\nNAVIGATING TO: ", query_or_url)
+        print("\n\033[90mNAVIGATING TO:", query_or_url, "\033[0m")
 
         prompt_header = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
         prompt_context = (
@@ -80,7 +81,7 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = 4, retries: int
         )
 
     else:
-        print("\nSEARCHING PDF: ", query_or_url)
+        print("\n\033[90mSEARCHING PDF:", query_or_url, "\033[0m")
 
         organic_results = get_serpapi_results(query_or_url)
 
