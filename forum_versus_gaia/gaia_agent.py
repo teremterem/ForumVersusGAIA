@@ -124,7 +124,8 @@ async def amain() -> None:
     Run the assistant on a question from the GAIA dataset.
     """
     question = (
-        "What was the volume in m^3 of the fish bag that was calculated in the University of Leicester paper "
-        '"Can Hiccup Supply Enough Fish to Maintain a Dragon’s Diet?"'
+        "On June 6, 2023, an article by Carolyn Collins Petersen was published in Universe Today. This article "
+        "mentions a team that produced a paper about their observations, linked at the bottom of the article. "
+        "Find this paper. Under what NASA award number was the work performed by R. G. Arendt supported by?"
     )
     await arun_assistant(question)

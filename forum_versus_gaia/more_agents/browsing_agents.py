@@ -46,6 +46,7 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = 4, retries: int
         # TODO Oleksandr: should it be an exception instead ?
         ctx.respond("I couldn't find a PDF document within a reasonable number of hops.")
         return
+
     completion_method = slow_gpt_completion if retries < 4 else fast_gpt_completion
 
     full_conversation = await ctx.request_messages.amaterialize_full_history()
@@ -57,6 +58,9 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = 4, retries: int
 
         if httpx_response.headers["content-type"] == "application/pdf":
             # pdf was found! returning its text
+
+            print("\nOPENING PDF FROM URL: ", query_or_url)
+
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
             ctx.respond(pdf_text, success=True)
@@ -67,6 +71,8 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = 4, retries: int
                 f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead."
             )
 
+        print("\nNAVIGATING TO: ", query_or_url)
+
         prompt_header = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
         prompt_context = (
             f"BELOW IS THE CONTENT OF A WEB PAGE FOUND AT {query_or_url}\n=====\n\n"
@@ -74,6 +80,8 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = 4, retries: int
         )
 
     else:
+        print("\nSEARCHING PDF: ", query_or_url)
+
         organic_results = get_serpapi_results(query_or_url)
 
         prompt_header = EXTRACT_PDF_URL_PROMPT

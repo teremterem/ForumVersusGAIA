@@ -2,6 +2,7 @@
 Utilities for the ForumVersusGaia project.
 """
 import os
+from functools import lru_cache
 from typing import Any, Callable
 from typing import Iterable
 from urllib.parse import urlparse
@@ -55,6 +56,7 @@ def get_httpx_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(follow_redirects=True, verify=False)
 
 
+@lru_cache
 def get_serpapi_results(query: str, remove_gaia_links: bool = REMOVE_GAIA_LINKS) -> list[dict[str, Any]]:
     """
     Returns a list of organic results from SerpAPI for a given query.
