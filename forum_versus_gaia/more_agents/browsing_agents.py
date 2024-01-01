@@ -57,6 +57,8 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
 
     query_or_url = await ctx.request_messages.amaterialize_concluding_content()
 
+    already_tried_urls = await acollect_tried_urls(ctx)
+
     if is_valid_url(query_or_url):
         async with get_httpx_client() as httpx_client:
             httpx_response = await httpx_client.get(query_or_url)
@@ -80,11 +82,13 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
 
         prompt_header_template = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
         prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
+        prompt_context = remove_tried_urls(prompt_context, already_tried_urls)
 
     else:
         print("\n\033[90mSEARCHING PDF:", query_or_url, "\033[0m")
 
         organic_results = get_serpapi_results(query_or_url)
+        organic_results = [result for result in organic_results if result["link"].strip() not in already_tried_urls]
 
         prompt_header_template = EXTRACT_PDF_URL_PROMPT
         prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
@@ -165,3 +169,26 @@ async def talk_to_gpt(
     ]
     page_url = await completion_method(prompt=prompt, pl_tags=pl_tags).amaterialize_content()
     return page_url.strip()
+
+
+async def acollect_tried_urls(ctx: InteractionContext) -> set[str]:
+    """
+    Collect URLs that were already tried by the agent.
+    """
+    result = set()
+    for msg in reversed(await ctx.request_messages.amaterialize_full_history()):
+        if msg.sender_alias != ctx.this_agent.alias:
+            break
+        stripped_content = msg.content.strip()
+        if is_valid_url(stripped_content):
+            result.add(stripped_content)
+    return result
+
+
+def remove_tried_urls(prompt_context: str, tried_urls: set[str]) -> str:
+    """
+    Remove URLs that were already tried from the prompt_context.
+    """
+    for url in tried_urls:
+        prompt_context = prompt_context.replace(url, "")
+    return prompt_context
