@@ -52,7 +52,7 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
         async with get_httpx_client() as httpx_client:
             httpx_response = await httpx_client.get(query_or_url)
 
-        if httpx_response.headers["content-type"] == "application/pdf":
+        if "application/pdf" in httpx_response.headers["content-type"]:
             # pdf was found! returning its text
 
             print("\n\033[90mOPENING PDF FROM URL:", query_or_url, "\033[0m")
