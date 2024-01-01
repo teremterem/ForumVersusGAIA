@@ -1,12 +1,11 @@
 """Agents that first use Google (SerpAPI) and then "click" around the web pages (follow urls)."""
 import io
 import json
-from typing import Callable
 
 import pypdf
 from agentforum.forum import InteractionContext
 
-from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion, fast_gpt_completion
+from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion, slow_gpt_completion
 from forum_versus_gaia.utils import (
     render_conversation,
     get_serpapi_results,
@@ -20,12 +19,6 @@ Your name is {AGENT_ALIAS}. You will be provided with a SerpAPI JSON response th
 for a given user query. The user is looking for a PDF document. Your job is to extract a URL that, in your opinion, \
 is the most likely to contain the PDF document the user is looking for.\
 """
-
-# EXTRACT_URL_PROMPT = """\
-# Your name is {AGENT_ALIAS}. You will be provided with a SerpAPI JSON response that contains a list of search results \
-# for a given user query. The user is looking for an answer to the ORIGINAL QUESTION (you will se it below). Your job \
-# is to extract a URL that, in your opinion, is the most likely to contain the answer the user is looking for.\
-# """
 
 EXTRACT_PDF_URL_FROM_PAGE_PROMPT = """\
 Your name is {AGENT_ALIAS}. You will be provided with the content of a web page that was found via web search with a \
@@ -52,11 +45,7 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
         ctx.respond("I couldn't find a PDF document within a reasonable number of steps.")
         return
 
-    is_a_retry = retries < MAX_RETRIES
-    completion_method = slow_gpt_completion if is_a_retry else fast_gpt_completion
-
     query_or_url = await ctx.request_messages.amaterialize_concluding_content()
-
     already_tried_urls = await acollect_tried_urls(ctx)
 
     if is_valid_url(query_or_url):
@@ -82,7 +71,6 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
 
         prompt_header_template = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
         prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
-        prompt_context = remove_tried_urls(prompt_context, already_tried_urls)
 
     else:
         print("\n\033[90mSEARCHING PDF:", query_or_url, "\033[0m")
@@ -93,12 +81,13 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
         prompt_header_template = EXTRACT_PDF_URL_PROMPT
         prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
 
+    prompt_context = remove_tried_urls(prompt_context, already_tried_urls)
     page_url = await talk_to_gpt(
-        completion_method=completion_method,
         ctx=ctx,
         prompt_header_template=prompt_header_template,
         prompt_context=prompt_context,
         pl_tags=[f"d{depth},r{retries}"],
+        is_a_retry=retries < MAX_RETRIES,
     )
 
     if is_valid_url(page_url):
@@ -130,11 +119,11 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
 
 
 async def talk_to_gpt(
-    completion_method: Callable,
     ctx: InteractionContext,
     prompt_header_template: str,
     prompt_context: str,
     pl_tags: list[str] = (),
+    is_a_retry: bool = False,
 ):
     """
     Talk to GPT to get the next URL to navigate to.
@@ -167,6 +156,7 @@ async def talk_to_gpt(
             "role": "system",
         },
     ]
+    completion_method = slow_gpt_completion if is_a_retry else fast_gpt_completion
     page_url = await completion_method(prompt=prompt, pl_tags=pl_tags).amaterialize_content()
     return page_url.strip()
 
@@ -175,14 +165,11 @@ async def acollect_tried_urls(ctx: InteractionContext) -> set[str]:
     """
     Collect URLs that were already tried by the agent.
     """
-    result = set()
-    for msg in reversed(await ctx.request_messages.amaterialize_full_history()):
-        if msg.sender_alias != ctx.this_agent.alias:
-            break
-        stripped_content = msg.content.strip()
-        if is_valid_url(stripped_content):
-            result.add(stripped_content)
-    return result
+    return {
+        msg.content.strip()
+        for msg in await ctx.request_messages.amaterialize_full_history()
+        if msg.sender_alias == ctx.this_agent.alias and is_valid_url(msg.content.strip())
+    }
 
 
 def remove_tried_urls(prompt_context: str, tried_urls: set[str]) -> str:

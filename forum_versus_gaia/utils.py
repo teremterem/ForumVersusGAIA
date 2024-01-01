@@ -24,10 +24,18 @@ class NotAUrlError(Exception):
 
 
 def render_conversation(
-    conversation: Iterable[Message], alias_renderer: Callable[[Message], str] = lambda msg: msg.sender_alias
+    conversation: Iterable[Message], alias_renderer: Callable[[Message], str | None] = lambda msg: msg.sender_alias
 ) -> str:
-    """Render a conversation as a string."""
-    return "\n\n".join([f"{alias_renderer(msg)}: {msg.content.strip()}" for msg in conversation])
+    """
+    Render a conversation as a string. Whenever alias_renderer returns None for a message, that message is skipped.
+    """
+    turns = []
+    for msg in conversation:
+        alias = alias_renderer(msg)
+        if alias is None:
+            continue
+        turns.append(f"{alias}: {msg.content.strip()}")
+    return "\n\n".join(turns)
 
 
 def is_valid_url(text: str) -> bool:
