@@ -43,7 +43,8 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
     a webpage. Input should be a search query. (NOTE: {AGENT_ALIAS} already knows that its job is to look for PDFs,
-    so you shouldn’t include "PDF" or "filetype:pdf" or anything like that in your query.)
+    so you shouldn’t include "PDF" or "filetype:pdf" or anything like that in your query. Also, don't try to search
+    for any specific information that might be contained in the PDF, just search for the PDF itself.)
     """
     # pylint: disable=too-many-locals
     if depth <= 0 or retries <= 0:
@@ -155,7 +156,10 @@ async def talk_to_gpt(
             "role": "user",
         },
         {
-            "content": "PLEASE ONLY RETURN A URL AND NO OTHER TEXT.\n\nURL:",
+            "content": (
+                "PLEASE ONLY RETURN A URL AND NO OTHER TEXT. "
+                "MAKE SURE NOT TO RETURN THE URLS THAT WERE ALREADY TRIED.\n\nURL:"
+            ),
             "role": "system",
         },
     ]
