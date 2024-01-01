@@ -32,9 +32,12 @@ given user query. The user is looking for a PDF document. Your job is to extract
 your opinion, is the most likely to lead to the PDF document the user is looking for.\
 """
 
+MAX_DEPTH = 5
+MAX_RETRIES = 3
+
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext, depth: int = 5, retries: int = 3) -> None:
+async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retries: int = MAX_RETRIES) -> None:
     """
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
@@ -47,7 +50,7 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = 5, retries: int
         ctx.respond("I couldn't find a PDF document within a reasonable number of steps.")
         return
 
-    is_a_retry = retries < 4
+    is_a_retry = retries < MAX_RETRIES
     completion_method = slow_gpt_completion if is_a_retry else fast_gpt_completion
 
     full_conversation = await ctx.request_messages.amaterialize_full_history()
