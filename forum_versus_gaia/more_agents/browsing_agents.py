@@ -42,7 +42,7 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
     a webpage. Input should be a search query. (NOTE: {AGENT_ALIAS} already knows that its job is to look for PDFs,
-    so you shouldn’t include the word “PDF” in your query.)
+    so you shouldn’t include "PDF" or "filetype:pdf" or anything like that in your query.)
     """
     # pylint: disable=too-many-locals
     if depth <= 0 or retries <= 0:
