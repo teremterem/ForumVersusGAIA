@@ -1,6 +1,7 @@
 """Agents that first use Google (SerpAPI) and then "click" around the web pages (follow urls)."""
 import io
 import json
+from typing import Callable
 
 import pypdf
 from agentforum.forum import InteractionContext
@@ -53,8 +54,7 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
     is_a_retry = retries < MAX_RETRIES
     completion_method = slow_gpt_completion if is_a_retry else fast_gpt_completion
 
-    full_conversation = await ctx.request_messages.amaterialize_full_history()
-    query_or_url = full_conversation[-1].content.strip()
+    query_or_url = await ctx.request_messages.amaterialize_concluding_content()
 
     if is_valid_url(query_or_url):
         async with get_httpx_client() as httpx_client:
@@ -77,51 +77,24 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
 
         print("\n\033[90mNAVIGATING TO:", query_or_url, "\033[0m")
 
-        prompt_header = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
-        prompt_context = (
-            f"BELOW IS THE CONTENT OF A WEB PAGE FOUND AT {query_or_url}\n=====\n\n"
-            f"{convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)}"
-        )
+        prompt_header_template = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
+        prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
 
     else:
         print("\n\033[90mSEARCHING PDF:", query_or_url, "\033[0m")
 
         organic_results = get_serpapi_results(query_or_url)
 
-        prompt_header = EXTRACT_PDF_URL_PROMPT
+        prompt_header_template = EXTRACT_PDF_URL_PROMPT
         prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
 
-    prompt = [
-        {
-            "content": prompt_header.format(AGENT_ALIAS=ctx.this_agent.alias),
-            "role": "system",
-        },
-        {
-            "content": "BELOW ARE THE STEPS THAT WERE TRIED SO FAR\n=====\n\n"
-            + render_conversation(
-                full_conversation,
-                alias_renderer=lambda msg: (
-                    f"{msg.sender_alias} - {'NAVIGATE TO' if is_valid_url(msg.content.strip()) else 'RESULT'}"
-                    if msg.sender_alias == ctx.this_agent.alias
-                    else "USER"
-                ),
-            ),
-            "role": "user",
-        },
-        {
-            "content": prompt_context,
-            "role": "user",
-        },
-        {
-            "content": (
-                "PLEASE ONLY RETURN A URL AND NO OTHER TEXT. "
-                "MAKE SURE NOT TO RETURN THE URLS THAT WERE ALREADY TRIED.\n\nURL:"
-            ),
-            "role": "system",
-        },
-    ]
-    page_url = await completion_method(prompt=prompt, pl_tags=[f"d{depth},r{retries}"]).amaterialize_content()
-    page_url = page_url.strip()
+    page_url = await talk_to_gpt(
+        completion_method=completion_method,
+        ctx=ctx,
+        prompt_header_template=prompt_header_template,
+        prompt_context=prompt_context,
+        pl_tags=[f"d{depth},r{retries}"],
+    )
 
     if is_valid_url(page_url):
         recursive_resp_promise = await pdf_finder_agent.quick_call(
@@ -149,3 +122,42 @@ async def pdf_finder_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, retr
     else:
         # it's not a url, it's most likely a message that tells that something went wrong
         ctx.respond(page_url)
+
+
+async def talk_to_gpt(
+    completion_method: Callable,
+    ctx: InteractionContext,
+    prompt_header_template: str,
+    prompt_context: str,
+    pl_tags: list[str] = (),
+):
+    """
+    Talk to GPT to get the next URL to navigate to.
+    """
+    prompt = [
+        {
+            "content": prompt_header_template.format(AGENT_ALIAS=ctx.this_agent.alias),
+            "role": "system",
+        },
+        {
+            "content": render_conversation(
+                await ctx.request_messages.amaterialize_full_history(),
+                alias_renderer=lambda msg: (
+                    f"{msg.sender_alias} - {'NAVIGATE TO' if is_valid_url(msg.content.strip()) else 'RESULT'}"
+                    if msg.sender_alias == ctx.this_agent.alias
+                    else "USER"
+                ),
+            ),
+            "role": "user",
+        },
+        {
+            "content": prompt_context,
+            "role": "user",
+        },
+        {
+            "content": "PLEASE ONLY RETURN A URL AND NO OTHER TEXT.\n\nURL:",
+            "role": "system",
+        },
+    ]
+    page_url = await completion_method(prompt=prompt, pl_tags=pl_tags).amaterialize_content()
+    return page_url.strip()
