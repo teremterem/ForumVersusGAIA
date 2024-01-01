@@ -4,7 +4,7 @@ Try out a question from the GAIA dataset.
 from agentforum.forum import InteractionContext
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, fast_gpt_completion, slow_gpt_completion
-from forum_versus_gaia.more_agents.browsing_agents import pdf_finder_agent
+from forum_versus_gaia.more_agents.pdf_finder_agent import pdf_finder_agent
 
 GAIA_SYSTEM_PROMPT = """\
 You are a general AI assistant. I will ask you a question. Report your thoughts, and finish your answer with the \
@@ -65,13 +65,16 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             "role": "user",
         },
     ]
-    query_msg_content = await fast_gpt_completion(prompt=prompt, stop="\nObservation:").amaterialize_content()
+    query_msg_content = await fast_gpt_completion(
+        prompt=prompt, stop="\nObservation:", pl_tags=["START"]
+    ).amaterialize_content()
     query = query_msg_content.split("Action Input:")[1].strip()
 
     content = await pdf_finder_agent.quick_call(
-        # TODO Oleksandr: introduce "reply_to" feature in the message tree and use it instead of agent kwarg ?
         query,
-        original_question=question,
+        # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message id
+        #  or even a message sequence (but not your own list of messages ?)
+        branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
     ).amaterialize_concluding_content()
 
     prompt = [
@@ -94,17 +97,17 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
         # TODO Oleksandr: should be possible to just send ctx.request_messages instead of *...
         *await ctx.request_messages.amaterialize_full_history(),
     ]
-    ctx.respond(slow_gpt_completion(prompt=prompt, **kwargs))
+    ctx.respond(slow_gpt_completion(prompt=prompt, pl_tags=["FINISH"], **kwargs))
 
 
-async def run_assistant(question: str) -> str:
+async def arun_assistant(question: str) -> str:
     """Run the assistant. Return the final answer in upper case."""
     print("\n\nQUESTION:", question)
 
     assistant_responses = gaia_agent.quick_call(question, stream=True)
 
     async for response in assistant_responses:
-        print("\n\033[1m\033[36mGPT: ", end="", flush=True)
+        print("\n\033[36;1mGPT: ", end="", flush=True)
         async for token in response:
             print(token.text, end="", flush=True)
         print("\033[0m")
@@ -116,12 +119,13 @@ async def run_assistant(question: str) -> str:
     return final_answer
 
 
-async def main() -> None:
+async def amain() -> None:
     """
     Run the assistant on a question from the GAIA dataset.
     """
     question = (
-        "What was the volume in m^3 of the fish bag that was calculated in the University of Leicester paper "
-        '"Can Hiccup Supply Enough Fish to Maintain a Dragon’s Diet?"'
+        "On June 6, 2023, an article by Carolyn Collins Petersen was published in Universe Today. This article "
+        "mentions a team that produced a paper about their observations, linked at the bottom of the article. "
+        "Find this paper. Under what NASA award number was the work performed by R. G. Arendt supported by?"
     )
-    await run_assistant(question)
+    await arun_assistant(question)
