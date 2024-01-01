@@ -94,6 +94,8 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
             first_try=True,
             retries=1,
         ).amaterialize_concluding_message()
+        # TODO Oleksandr: this amaterialize_concluding_message is needed to get exceptions here and not later -
+        #  how to overcome this ?
 
     except ForumVersusGaiaError:
         query_msg_content = await slow_gpt_completion(
