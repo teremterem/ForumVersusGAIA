@@ -16,6 +16,7 @@ from forum_versus_gaia.utils import (
     convert_html_to_markdown,
     TooManyStepsError,
     ForumVersusGaiaError,
+    assert_valid_url,
 )
 
 EXTRACT_PDF_URL_PROMPT = """\
@@ -85,6 +86,7 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
     ).amaterialize_content()
     query = query_msg_content.split("Action Input:")[1].strip()
 
+    # noinspection PyBroadException
     try:
         pdf_msg = await pdf_finder_no_proxy.quick_call(
             query,
@@ -92,12 +94,12 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
             #  id or even a message sequence (but not your own list of messages ?)
             branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
             first_try=True,
-            retries=1,
         ).amaterialize_concluding_message()
         # TODO Oleksandr: this amaterialize_concluding_message is needed to get exceptions here and not later -
         #  how to overcome this ?
+        await aassert_pdf_is_correct(ctx, pdf_msg.content[:2000])
 
-    except ForumVersusGaiaError:
+    except Exception:  # pylint: disable=broad-except
         query_msg_content = await slow_gpt_completion(
             prompt=prompt, stop="\nObservation:", pl_tags=["RETRY"]
         ).amaterialize_content()
@@ -105,29 +107,21 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
 
         pdf_msg = await pdf_finder_no_proxy.quick_call(
             query,
-            # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message
-            #  id or even a message sequence (but not your own list of messages ?)
             branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
             first_try=False,
         ).amaterialize_concluding_message()
+        await aassert_pdf_is_correct(ctx, pdf_msg.content[:2000])
 
     ctx.respond(pdf_msg)
 
 
 @forum.agent
-async def pdf_finder_no_proxy(
-    ctx: InteractionContext, first_try: bool, depth: int = MAX_DEPTH, retries: int = MAX_RETRIES
-) -> None:
+async def pdf_finder_no_proxy(ctx: InteractionContext, first_try: bool, depth: int = MAX_DEPTH) -> None:
     """
     TODO Oleksandr: introduce the concept of proxy agents at the level of the AgentForum framework
     """
-    # pylint: disable=too-many-locals
-    if depth <= 0 or retries <= 0:
-        error_message = "I couldn't find a PDF document within a reasonable number of steps."
-        if first_try:
-            raise TooManyStepsError(error_message)
-        ctx.respond(error_message)
-        return
+    if depth <= 0:
+        raise TooManyStepsError("I couldn't find a PDF document within a reasonable number of steps.")
 
     query_or_url = await ctx.request_messages.amaterialize_concluding_content()
     already_tried_urls = await acollect_tried_urls(ctx)
@@ -143,11 +137,12 @@ async def pdf_finder_no_proxy(
 
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
-            ctx.respond(pdf_text, success=True)
+
+            ctx.respond(pdf_text)
             return
 
         if "text/html" not in httpx_response.headers["content-type"]:
-            raise RuntimeError(
+            raise ForumVersusGaiaError(
                 f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead."
             )
 
@@ -166,45 +161,26 @@ async def pdf_finder_no_proxy(
         prompt_header_template = EXTRACT_PDF_URL_PROMPT
         prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
 
+    # TODO Oleksandr: this line has no effect at the moment !!!
     prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
+
     page_url = await talk_to_gpt(
         ctx=ctx,
         prompt_header_template=prompt_header_template,
         prompt_context=prompt_context,
         first_try=first_try,
-        pl_tags=[f"d{depth},r{retries}"],
+        pl_tags=[f"d{depth}"],
     )
 
-    if is_valid_url(page_url):
-        recursive_resp_promise = await pdf_finder_no_proxy.quick_call(
+    assert_valid_url(page_url)
+    ctx.respond(
+        pdf_finder_no_proxy.quick_call(
             page_url,
             branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
             first_try=first_try,
             depth=depth - 1,
-            retries=retries,
-        ).aget_concluding_msg_promise()
-
-        # TODO Oleksandr: avoid having to specify that it is `.metadata` - it's confusing,
-        #  you don't specify it when you set it (OR make sure to specify `.metadata` everywhere)
-        if not getattr((await recursive_resp_promise.amaterialize()).metadata, "success", False):
-            # PDF was not found, let's try again
-            current_request = await ctx.request_messages.amaterialize_concluding_message()
-            recursive_resp_promise = await pdf_finder_no_proxy.quick_call(
-                current_request,
-                override_sender_alias=current_request.get_original_msg().sender_alias,
-                branch_from=recursive_resp_promise,
-                first_try=first_try,
-                depth=depth,
-                retries=retries - 1,
-            ).amaterialize_concluding_message()
-
-        ctx.respond(recursive_resp_promise)
-
-    else:
-        # it's not a url, it's most likely a message that tells that something went wrong
-        if first_try:
-            raise ForumVersusGaiaError(page_url)
-        ctx.respond(page_url)
+        )
+    )
 
 
 async def talk_to_gpt(
@@ -268,3 +244,52 @@ def remove_tried_urls_in_markdown(prompt_context: str, tried_urls: set[str]) -> 
     for url in tried_urls:
         prompt_context = prompt_context.replace(f"({url})", "(#)")
     return prompt_context
+
+
+async def aassert_pdf_is_correct(ctx: InteractionContext, pdf_snippet: str) -> None:
+    """
+    Ask GPT-4 if this PDF is the one that was referenced in the original question.
+    """
+    print("\n\033[90mVERIFYING PDF\033[0m")
+
+    answer = await fast_gpt_completion(
+        prompt=[
+            {
+                "content": (
+                    "You are an AI assistant and you are good at validating if PDF documents match what the user is "
+                    "asking for. Below is a SNIPPET of a PDF document."
+                ),
+                "role": "system",
+            },
+            {
+                "content": pdf_snippet,
+                "role": "user",
+            },
+            {
+                "content": "And here is what the user asked for.",
+                "role": "system",
+            },
+            {
+                "content": render_conversation(
+                    await ctx.request_messages.amaterialize_as_list(), alias_renderer="USER"
+                ),
+                "role": "user",
+            },
+            {
+                "content": (
+                    "If the PDF document above matches the user's request then respond with only one word - MATCH, "
+                    "and if it is not a match then you are free to respond with any text you want. NOTE: The text "
+                    "provided above might not contain the answer to the specific question the user is asking - it is "
+                    "ok, because you're not seeing the full document, you're only seeing part of it. Your job is to "
+                    "judge whether the document itself is the right document (full text will be provided after you "
+                    "tell me if it is a match or not).\n\n"
+                    "YOUR ANSWER:"
+                ),
+                "role": "system",
+            },
+        ],
+        pl_tags=["CHECK_PDF"],
+    ).amaterialize_content()
+    answer = answer.strip()
+    if answer.upper() != "MATCH":
+        raise ForumVersusGaiaError(answer)
