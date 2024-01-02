@@ -20,6 +20,11 @@ class ForumVersusGaiaError(Exception):
     Base class for all exceptions in the ForumVersusGaia project.
     """
 
+    def __init__(self, message: str, already_tried_urls: set[str] = ()) -> None:
+        super().__init__(message)
+        # TODO Oleksandr: get rid of this temporary hack:
+        self.already_tried_urls = already_tried_urls
+
 
 class NotAUrlError(ForumVersusGaiaError):
     """
