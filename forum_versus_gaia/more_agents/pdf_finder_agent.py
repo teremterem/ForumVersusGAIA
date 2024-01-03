@@ -121,7 +121,7 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
     ctx.respond(pdf_msg)
 
 
-@forum.agent
+@forum.agent(alias="PDF_FINDER_AGENT")
 async def pdf_finder_no_proxy(
     ctx: InteractionContext, depth: int = MAX_DEPTH, already_tried_urls: tuple[str, ...] = ()
 ) -> None:
