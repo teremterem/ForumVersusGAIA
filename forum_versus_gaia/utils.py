@@ -42,17 +42,17 @@ class TooManyStepsError(ForumVersusGaiaError):
 
 def render_conversation(
     conversation: Iterable[Message],
-    alias_renderer: str | Callable[[Message], str | None] = lambda msg: msg.sender_alias,
+    alias_resolver: str | Callable[[Message], str | None] = lambda msg: msg.sender_alias,
     alias_delimiter: str = ": ",
     turn_delimiter: str = "\n\n",
 ) -> str:
     """
-    Render a conversation as a string. Whenever alias_renderer returns None for a message, that message is skipped.
+    Render a conversation as a string. Whenever alias_resolver returns None for a message, that message is skipped.
     """
-    hardcoded_alias = alias_renderer if isinstance(alias_renderer, str) else None
+    hardcoded_alias = alias_resolver if isinstance(alias_resolver, str) else None
     turns = []
     for msg in conversation:
-        alias = hardcoded_alias or alias_renderer(msg)
+        alias = hardcoded_alias or alias_resolver(msg)
         if alias is None:
             continue
         turns.append(f"{alias}{alias_delimiter}{msg.content.strip()}")

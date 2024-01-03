@@ -31,24 +31,20 @@ given user query. The user is looking for a PDF document. Your job is to extract
 your opinion, is the most likely to lead to the PDF document the user is looking for.\
 """
 
-# TODO Oleksandr: simplify this prompt - there is only one "tool", no need for it to be so fancy
-CHOOSE_TOOL_PROMPT = """\
-Answer the following questions as best you can. You have access to the following tools:
-
-{AGENT_DESCRIPTIONS}
-
+PDF_QUERY_COT_PROMPT = """\
 Use the following format:
 
-Question: the input question you must answer
-Thought: you should always think about what to do
-Action: the action to take, should be one of [{AGENT_NAMES}]
-Action Input: the input to the action
-Observation: the result of the action
-... (this Thought/Action/Action Input/Observation can repeat N times)
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
+Thought: you should always think out loud before you come up with a search query
+Search Query: the query to use to search for the PDF document
+Observation: here you speculate how well your search query might perform
 
-Begin!\
+NOTE: You are using a special search engine that already knows that you're looking for PDFs, so you shouldn’t \
+include "PDF" or "filetype:pdf" or anything like that in your query. Also, don't try to search for any specific \
+information that might be contained in the PDF, just search for the PDF itself.
+
+Begin!
+
+Thought:\
 """
 
 # MAX_RETRIES = 3
@@ -60,29 +56,29 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
     """
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
-    a webpage. Input should be a search query. (NOTE: {AGENT_ALIAS} already knows that its job is to look for PDFs,
-    so you shouldn’t include "PDF" or "filetype:pdf" or anything like that in your query. Also, don't try to search
-    for any specific information that might be contained in the PDF, just search for the PDF itself.)
+    a webpage.
     """
-    agent_names = ctx.this_agent.alias
-    agent_descriptions = f"{ctx.this_agent.alias}: {ctx.this_agent.description}"
-
-    # TODO Oleksandr: find a prompt format that allows full chat history to be passed ?
-    question = await ctx.request_messages.amaterialize_concluding_content()
-    question = question.strip()
-
     prompt = [
         {
-            "content": CHOOSE_TOOL_PROMPT.format(AGENT_NAMES=agent_names, AGENT_DESCRIPTIONS=agent_descriptions),
+            "content": (
+                f"Your name is {ctx.this_agent.alias} and your job function is to use a search engine to find PDF "
+                "documents that are needed to answer the user's question. Here is the question:"
+            ),
             "role": "system",
         },
         {
-            "content": f"Question: {question}\nThought:",
+            "content": render_conversation(
+                await ctx.request_messages.amaterialize_full_history(), alias_resolver="USER"
+            ),
             "role": "user",
+        },
+        {
+            "content": PDF_QUERY_COT_PROMPT,
+            "role": "system",
         },
     ]
     query = await slow_gpt_completion(prompt=prompt, stop="\nObservation:", pl_tags=["START"]).amaterialize_content()
-    query = query.split("Action Input:")[1]
+    query = query.split("Search Query:")[1]
     query = query.split("\n\n")[0].strip()
 
     try:
@@ -95,31 +91,31 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
         # TODO Oleksandr: this amaterialize_concluding_message is needed to get exceptions here and not later -
         #  how to overcome this ?
 
-    except ForumVersusGaiaError as gaia_error:
+    except ForumVersusGaiaError as gaia_error1:
         try:
             query = await slow_gpt_completion(
                 prompt=prompt, stop="\nObservation:", pl_tags=["RETRY_1"]
             ).amaterialize_content()
-            query = query.split("Action Input:")[1]
+            query = query.split("Search Query:")[1]
             query = query.split("\n\n")[0].strip()
 
             pdf_msg = await pdf_finder_no_proxy.quick_call(
                 query,
                 branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-                already_tried_urls=tuple(gaia_error.already_tried_urls),
+                already_tried_urls=tuple(gaia_error1.already_tried_urls),
             ).amaterialize_concluding_message()
 
-        except ForumVersusGaiaError as gaia_error:
+        except ForumVersusGaiaError as gaia_error2:
             query = await slow_gpt_completion(
                 prompt=prompt, stop="\nObservation:", pl_tags=["RETRY_2"]
             ).amaterialize_content()
-            query = query.split("Action Input:")[1]
+            query = query.split("Search Query:")[1]
             query = query.split("\n\n")[0].strip()
 
             pdf_msg = await pdf_finder_no_proxy.quick_call(
                 query,
                 branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-                already_tried_urls=tuple(gaia_error.already_tried_urls),
+                already_tried_urls=tuple(gaia_error2.already_tried_urls),
             ).amaterialize_concluding_message()
 
     ctx.respond(pdf_msg)
@@ -214,7 +210,7 @@ async def talk_to_gpt(
         {
             "content": render_conversation(
                 await ctx.request_messages.amaterialize_full_history(),
-                alias_renderer=lambda msg: (
+                alias_resolver=lambda msg: (
                     f"{msg.sender_alias} - {'NAVIGATE TO' if is_valid_url(msg.content.strip()) else 'RESULT'}"
                     if msg.sender_alias == ctx.this_agent.alias
                     else "USER"
@@ -283,7 +279,7 @@ async def aassert_pdf_is_correct(ctx: InteractionContext, pdf_text: str) -> None
             },
             {
                 "content": render_conversation(
-                    (await ctx.request_messages.amaterialize_full_history())[:2], alias_renderer="USER"
+                    (await ctx.request_messages.amaterialize_full_history())[:2], alias_resolver="USER"
                 ),
                 "role": "user",
             },
