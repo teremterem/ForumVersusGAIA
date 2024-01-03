@@ -81,116 +81,76 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
     query = query.split("Search Query:")[1]
     query = query.split("\n\n")[0].strip()
 
-    try:
-        pdf_msg = await pdf_finder_no_proxy.quick_call(
-            query,
-            # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message
-            #  id or even a message sequence (but not your own list of messages ?)
-            branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-        ).amaterialize_concluding_message()
-        # TODO Oleksandr: this amaterialize_concluding_message is needed to get exceptions here and not later -
-        #  how to overcome this ?
-
-    except ForumVersusGaiaError as gaia_error1:
-        try:
-            query = await slow_gpt_completion(
-                prompt=prompt, stop="\nObservation:", pl_tags=["RETRY_1"]
-            ).amaterialize_content()
-            query = query.split("Search Query:")[1]
-            query = query.split("\n\n")[0].strip()
-
-            pdf_msg = await pdf_finder_no_proxy.quick_call(
-                query,
-                branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-                already_tried_urls=tuple(gaia_error1.already_tried_urls),
-            ).amaterialize_concluding_message()
-
-        except ForumVersusGaiaError as gaia_error2:
-            query = await slow_gpt_completion(
-                prompt=prompt, stop="\nObservation:", pl_tags=["RETRY_2"]
-            ).amaterialize_content()
-            query = query.split("Search Query:")[1]
-            query = query.split("\n\n")[0].strip()
-
-            pdf_msg = await pdf_finder_no_proxy.quick_call(
-                query,
-                branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-                already_tried_urls=tuple(gaia_error2.already_tried_urls),
-            ).amaterialize_concluding_message()
-
+    pdf_msg = await pdf_finder_no_proxy.quick_call(
+        query,
+        # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message
+        #  id or even a message sequence (but not your own list of messages ?)
+        branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+    ).amaterialize_concluding_message()
+    # TODO Oleksandr: this amaterialize_concluding_message is needed to get exceptions here and not later -
+    #  how to overcome this ?
     ctx.respond(pdf_msg)
 
 
 @forum.agent(alias="PDF_FINDER_AGENT")
-async def pdf_finder_no_proxy(
-    ctx: InteractionContext, depth: int = MAX_DEPTH, already_tried_urls: tuple[str, ...] = ()
-) -> None:
-    """
-    TODO Oleksandr: introduce the concept of proxy agents at the level of the AgentForum framework ?
-    """
-    already_tried_urls = {*await acollect_tried_urls(ctx), *already_tried_urls}
-    try:
-        if depth <= 0:
-            raise TooManyStepsError("I couldn't find a PDF document within a reasonable number of steps.")
+async def pdf_finder_no_proxy(ctx: InteractionContext, depth: int = MAX_DEPTH) -> None:
+    # TODO Oleksandr: rename this agent and add a docstring
+    if depth <= 0:
+        raise TooManyStepsError("I couldn't find a PDF document within a reasonable number of steps.")
 
-        query_or_url = await ctx.request_messages.amaterialize_concluding_content()
+    query_or_url = await ctx.request_messages.amaterialize_concluding_content()
+    already_tried_urls = await acollect_tried_urls(ctx)
 
-        if is_valid_url(query_or_url):
-            async with get_httpx_client() as httpx_client:
-                httpx_response = await httpx_client.get(query_or_url)
+    if is_valid_url(query_or_url):
+        async with get_httpx_client() as httpx_client:
+            httpx_response = await httpx_client.get(query_or_url)
 
-            if "application/pdf" in httpx_response.headers["content-type"]:
-                # pdf was found! returning its text
+        if "application/pdf" in httpx_response.headers["content-type"]:
+            # pdf was found! returning its text
+            print("\n\033[90mOPENING PDF FROM URL:", query_or_url, "\033[0m")
 
-                print("\n\033[90mOPENING PDF FROM URL:", query_or_url, "\033[0m")
+            pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
+            pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
 
-                pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
-                pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
+            await aassert_pdf_is_correct(ctx, pdf_text)
+            ctx.respond(pdf_text)
+            return
 
-                await aassert_pdf_is_correct(ctx, pdf_text)
-                ctx.respond(pdf_text)
-                return
-
-            if "text/html" not in httpx_response.headers["content-type"]:
-                raise ForumVersusGaiaError(
-                    f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead."
-                )
-
-            print("\n\033[90mNAVIGATING TO:", query_or_url, "\033[0m")
-
-            prompt_header_template = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
-            prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
-
-        else:
-            print("\n\033[90mSEARCHING PDF:", query_or_url, "\033[0m")
-
-            organic_results = get_serpapi_results(query_or_url)
-            organic_results = [
-                result for result in organic_results if result["link"].strip() not in already_tried_urls
-            ]
-
-            prompt_header_template = EXTRACT_PDF_URL_PROMPT
-            prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
-
-        prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
-        page_url = await talk_to_gpt(
-            ctx=ctx,
-            prompt_header_template=prompt_header_template,
-            prompt_context=prompt_context,
-            pl_tags=[f"d{depth}"],
-        )
-
-        assert_valid_url(page_url)
-        ctx.respond(
-            pdf_finder_no_proxy.quick_call(
-                page_url,
-                branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-                depth=depth - 1,
-                already_tried_urls=tuple(already_tried_urls),
+        if "text/html" not in httpx_response.headers["content-type"]:
+            raise ForumVersusGaiaError(
+                f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead."
             )
+
+        print("\n\033[90mNAVIGATING TO:", query_or_url, "\033[0m")
+
+        prompt_header_template = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
+        prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
+
+    else:
+        print("\n\033[90mSEARCHING PDF:", query_or_url, "\033[0m")
+
+        organic_results = get_serpapi_results(query_or_url)
+        organic_results = [result for result in organic_results if result["link"].strip() not in already_tried_urls]
+
+        prompt_header_template = EXTRACT_PDF_URL_PROMPT
+        prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
+
+    prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
+    page_url = await talk_to_gpt(
+        ctx=ctx,
+        prompt_header_template=prompt_header_template,
+        prompt_context=prompt_context,
+        pl_tags=[f"d{depth}"],
+    )
+
+    assert_valid_url(page_url)
+    ctx.respond(
+        pdf_finder_no_proxy.quick_call(
+            page_url,
+            branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+            depth=depth - 1,
         )
-    except Exception as exc:  # pylint: disable=broad-except
-        raise ForumVersusGaiaError(str(exc), already_tried_urls=already_tried_urls) from exc
+    )
 
 
 async def talk_to_gpt(
