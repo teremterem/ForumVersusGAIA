@@ -49,6 +49,7 @@ def render_conversation(
     """
     Render a conversation as a string. Whenever alias_resolver returns None for a message, that message is skipped.
     """
+    # TODO Oleksandr: make this function part of the framework
     hardcoded_alias = alias_resolver if isinstance(alias_resolver, str) else None
     turns = []
     for msg in conversation:

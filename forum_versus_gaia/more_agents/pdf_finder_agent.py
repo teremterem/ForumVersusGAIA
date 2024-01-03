@@ -3,6 +3,7 @@ This module contains an agent that finds PDF documents on the internet.
 """
 import io
 import json
+from typing import Optional
 
 import pypdf
 from agentforum.forum import InteractionContext
@@ -52,7 +53,7 @@ MAX_DEPTH = 7
 
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext) -> None:
+async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None) -> None:
     """
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
@@ -81,20 +82,18 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
     query = query.split("Search Query:")[1]
     query = query.split("\n\n")[0].strip()
 
-    pdf_msg = await pdf_finder_no_proxy.quick_call(
+    browsing_agent.quick_call(
         query,
+        beacon=beacon,
         # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message
         #  id or even a message sequence (but not your own list of messages ?)
         branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-    ).amaterialize_concluding_message()
-    # TODO Oleksandr: this amaterialize_concluding_message is needed to get exceptions here and not later -
-    #  how to overcome this ?
-    ctx.respond(pdf_msg)
+    )
 
 
-@forum.agent(alias="PDF_FINDER_AGENT")
-async def pdf_finder_no_proxy(ctx: InteractionContext, depth: int = MAX_DEPTH) -> None:
-    # TODO Oleksandr: rename this agent and add a docstring
+@forum.agent
+async def browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon: Optional[str] = None) -> None:
+    # TODO Oleksandr: add a docstring
     if depth <= 0:
         raise TooManyStepsError("I couldn't find a PDF document within a reasonable number of steps.")
 
@@ -113,7 +112,14 @@ async def pdf_finder_no_proxy(ctx: InteractionContext, depth: int = MAX_DEPTH) -
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
 
             await aassert_pdf_is_correct(ctx, pdf_text)
-            ctx.respond(pdf_text)
+
+            from forum_versus_gaia.gaia_agent import gaia_agent
+
+            gaia_agent.quick_call(
+                pdf_text,
+                beacon=beacon,
+                branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+            )
             return
 
         if "text/html" not in httpx_response.headers["content-type"]:
@@ -144,12 +150,11 @@ async def pdf_finder_no_proxy(ctx: InteractionContext, depth: int = MAX_DEPTH) -
     )
 
     assert_valid_url(page_url)
-    ctx.respond(
-        pdf_finder_no_proxy.quick_call(
-            page_url,
-            branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-            depth=depth - 1,
-        )
+    browsing_agent.quick_call(
+        page_url,
+        depth=depth - 1,
+        beacon=beacon,
+        branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
     )
 
 
