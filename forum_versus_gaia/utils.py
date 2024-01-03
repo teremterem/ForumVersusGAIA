@@ -20,6 +20,11 @@ class ForumVersusGaiaError(Exception):
     Base class for all exceptions in the ForumVersusGaia project.
     """
 
+    def __init__(self, message: str, already_tried_urls: set[str] = ()) -> None:
+        super().__init__(message)
+        # TODO Oleksandr: get rid of this temporary hack:
+        self.already_tried_urls = already_tried_urls
+
 
 class NotAUrlError(ForumVersusGaiaError):
     """
@@ -36,18 +41,22 @@ class TooManyStepsError(ForumVersusGaiaError):
 
 
 def render_conversation(
-    conversation: Iterable[Message], alias_renderer: Callable[[Message], str | None] = lambda msg: msg.sender_alias
+    conversation: Iterable[Message],
+    alias_resolver: str | Callable[[Message], str | None] = lambda msg: msg.sender_alias,
+    alias_delimiter: str = ": ",
+    turn_delimiter: str = "\n\n",
 ) -> str:
     """
-    Render a conversation as a string. Whenever alias_renderer returns None for a message, that message is skipped.
+    Render a conversation as a string. Whenever alias_resolver returns None for a message, that message is skipped.
     """
+    hardcoded_alias = alias_resolver if isinstance(alias_resolver, str) else None
     turns = []
     for msg in conversation:
-        alias = alias_renderer(msg)
+        alias = hardcoded_alias or alias_resolver(msg)
         if alias is None:
             continue
-        turns.append(f"{alias}: {msg.content.strip()}")
-    return "\n\n".join(turns)
+        turns.append(f"{alias}{alias_delimiter}{msg.content.strip()}")
+    return turn_delimiter.join(turns)
 
 
 def is_valid_url(text: str) -> bool:
