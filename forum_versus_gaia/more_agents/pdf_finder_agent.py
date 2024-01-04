@@ -136,7 +136,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
             if is_pdf_correct.upper() != "MATCH":
                 # TODO Oleksandr: should be an exception (and move inside averify_pdf aka aassert_pdf)
                 pdf_finder_agent.quick_call(
-                    f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead.",
+                    is_pdf_correct,
                     beacon=beacon,
                     failure=True,
                     branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
