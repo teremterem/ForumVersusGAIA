@@ -30,8 +30,7 @@ async def test_doctor_who_location():
         "first scene heading."
     )
     answer = await arun_assistant(question)
-    # TODO Oleksandr: fix the assistant so it only returns "THE CASTLE" and no other text
-    assert "THE CASTLE" in answer
+    assert answer == "THE CASTLE"
 
 
 @pytest.mark.asyncio

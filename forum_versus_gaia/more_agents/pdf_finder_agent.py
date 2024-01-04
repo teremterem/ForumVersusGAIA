@@ -127,16 +127,16 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
 
         if "application/pdf" in httpx_response.headers["content-type"]:
             # pdf was found! returning its text
-            print("\n\033[90mOPENING PDF FROM URL:", query_or_url, "\033[0m")
+            print("\n\033[90m📗 READING PDF FROM:", query_or_url, "\033[0m")
 
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
 
-            is_pdf_correct = await averify_pdf_is_correct(ctx, pdf_text)
-            if is_pdf_correct.upper() != "MATCH":
-                # TODO Oleksandr: should be an exception (and move inside averify_pdf aka aassert_pdf)
+            pdf_snippets = await aextract_pdf_snippets(ctx, pdf_text)
+            if pdf_snippets.upper() == "MISMATCH":
+                # TODO Oleksandr: should be an exception (and move inside aextract_pdf_snippets)
                 pdf_finder_agent.quick_call(
-                    is_pdf_correct,
+                    "This PDF document does not contain any relevant information.",
                     beacon=beacon,
                     failure=True,
                     branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
@@ -144,7 +144,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
                 return
 
             pdf_finder_agent.quick_call(
-                pdf_text,
+                pdf_snippets,
                 beacon=beacon,
                 branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
             )
@@ -160,13 +160,13 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
             )
             return
 
-        print("\n\033[90mNAVIGATING TO:", query_or_url, "\033[0m")
+        print("\n\033[90m🔗 NAVIGATING TO:", query_or_url, "\033[0m")
 
         prompt_header_template = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
         prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
 
     else:
-        print("\n\033[90mSEARCHING PDF:", query_or_url, "\033[0m")
+        print("\n\033[90m🌐 SEARCHING PDF:", query_or_url, "\033[0m")
 
         organic_results = get_serpapi_results(query_or_url)
         organic_results = [result for result in organic_results if result["link"].strip() not in already_tried_urls]
@@ -254,18 +254,16 @@ def remove_tried_urls_in_markdown(prompt_context: str, tried_urls: set[str]) -> 
     return prompt_context
 
 
-async def averify_pdf_is_correct(ctx: InteractionContext, pdf_text: str) -> str:
+async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
     """
-    Ask GPT-4 if this PDF is the one that was referenced in the original question.
+    Extract snippets from a PDF document that are relevant to the user's request.
     """
-    print("\n\033[90mVERIFYING PDF...\033[0m")
-
     answer = await slow_gpt_completion(
         prompt=[
             {
                 "content": (
-                    "You are an AI assistant and you are good at validating if PDF documents match what the user is "
-                    "asking for. Below is a PDF document."
+                    "You are an AI assistant and you are good at extracting relevant information from PDF documents. "
+                    "Below is a PDF document."
                 ),
                 "role": "system",
             },
@@ -279,20 +277,22 @@ async def averify_pdf_is_correct(ctx: InteractionContext, pdf_text: str) -> str:
             },
             {
                 "content": render_conversation(
-                    (await ctx.request_messages.amaterialize_full_history())[:2], alias_resolver="USER"
+                    await ctx.request_messages.amaterialize_full_history(),
+                    alias_resolver=lambda msg: msg.sender_alias if msg.sender_alias == "USER" else None,
                 ),
                 "role": "user",
             },
             {
                 "content": (
-                    "If the PDF document above matches the user's request then respond with only one word - MATCH, "
-                    "and if it is not a match then you are free to respond with any text you want.\n"
+                    "Please extract a snippet or snippets from the PDF document that you think are relevant to the "
+                    "user's request. If the PDF document does not contain any relevant information then respond with "
+                    "only one word - MISMATCH\n"
                     "\n"
-                    "YOUR ANSWER:"
+                    "Go!"
                 ),
                 "role": "system",
             },
         ],
-        pl_tags=["CHECK_PDF"],
+        pl_tags=["READ_PDF"],
     ).amaterialize_content()
     return answer.strip()
