@@ -166,7 +166,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
         prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
 
     else:
-        print("\n\033[90m🌐 SEARCHING PDF:", query_or_url, "\033[0m")
+        print("\n\033[90m🔍 LOOKING FOR PDF:", query_or_url, "\033[0m")
 
         organic_results = get_serpapi_results(query_or_url)
         organic_results = [result for result in organic_results if result["link"].strip() not in already_tried_urls]
