@@ -1,8 +1,11 @@
 """
 This module contains an agent that finds PDF documents on the internet.
 """
+import asyncio
 import io
 import json
+import secrets
+from typing import Optional
 
 import pypdf
 from agentforum.forum import InteractionContext
@@ -14,9 +17,6 @@ from forum_versus_gaia.utils import (
     get_httpx_client,
     is_valid_url,
     convert_html_to_markdown,
-    TooManyStepsError,
-    ForumVersusGaiaError,
-    assert_valid_url,
 )
 
 EXTRACT_PDF_URL_PROMPT = """\
@@ -47,17 +47,23 @@ Begin!
 Thought:\
 """
 
-# MAX_RETRIES = 3
+MAX_RETRIES = 3
 MAX_DEPTH = 7
+
+RESPONSES: dict[str, asyncio.Queue] = {}
 
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext) -> None:
+async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None, failure: bool = False) -> None:
     """
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
     a webpage.
     """
+    if beacon is not None:
+        RESPONSES.pop(beacon).put_nowait((ctx.request_messages, failure))
+        return
+
     prompt = [
         {
             "content": (
@@ -67,9 +73,7 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
             "role": "system",
         },
         {
-            "content": render_conversation(
-                await ctx.request_messages.amaterialize_full_history(), alias_resolver="USER"
-            ),
+            "content": render_conversation(await ctx.request_messages.amaterialize_full_history()),
             "role": "user",
         },
         {
@@ -81,116 +85,119 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
     query = query.split("Search Query:")[1]
     query = query.split("\n\n")[0].strip()
 
-    try:
-        pdf_msg = await pdf_finder_no_proxy.quick_call(
+    responses = ctx.request_messages  # this is just for convenience - it will be overwritten later
+    for _ in range(MAX_RETRIES):
+        beacon = secrets.token_hex(4)
+        RESPONSES[beacon] = asyncio.Queue()
+
+        pdf_browsing_agent.quick_call(
             query,
+            beacon=beacon,
             # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message
             #  id or even a message sequence (but not your own list of messages ?)
+            branch_from=await responses.aget_concluding_msg_promise(),
+        )
+
+        responses, failure = await RESPONSES[beacon].get()
+        if not failure:
+            break
+
+    ctx.respond(responses)
+
+
+@forum.agent(alias="BROWSING_AGENT")
+async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon: Optional[str] = None) -> None:
+    # TODO Oleksandr: add a docstring
+    if depth <= 0:
+        # TODO Oleksandr: should be an exception
+        pdf_finder_agent.quick_call(
+            "I couldn't find a PDF document within a reasonable number of steps.",
+            beacon=beacon,
+            failure=True,
             branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-        ).amaterialize_concluding_message()
-        # TODO Oleksandr: this amaterialize_concluding_message is needed to get exceptions here and not later -
-        #  how to overcome this ?
+        )
+        return
 
-    except ForumVersusGaiaError as gaia_error1:
-        try:
-            query = await slow_gpt_completion(
-                prompt=prompt, stop="\nObservation:", pl_tags=["RETRY_1"]
-            ).amaterialize_content()
-            query = query.split("Search Query:")[1]
-            query = query.split("\n\n")[0].strip()
+    query_or_url = await ctx.request_messages.amaterialize_concluding_content()
+    already_tried_urls = await acollect_tried_urls(ctx)
 
-            pdf_msg = await pdf_finder_no_proxy.quick_call(
-                query,
-                branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-                already_tried_urls=tuple(gaia_error1.already_tried_urls),
-            ).amaterialize_concluding_message()
+    if is_valid_url(query_or_url):
+        async with get_httpx_client() as httpx_client:
+            httpx_response = await httpx_client.get(query_or_url)
 
-        except ForumVersusGaiaError as gaia_error2:
-            query = await slow_gpt_completion(
-                prompt=prompt, stop="\nObservation:", pl_tags=["RETRY_2"]
-            ).amaterialize_content()
-            query = query.split("Search Query:")[1]
-            query = query.split("\n\n")[0].strip()
+        if "application/pdf" in httpx_response.headers["content-type"]:
+            # pdf was found! returning its text
+            print("\n\033[90mOPENING PDF FROM URL:", query_or_url, "\033[0m")
 
-            pdf_msg = await pdf_finder_no_proxy.quick_call(
-                query,
-                branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-                already_tried_urls=tuple(gaia_error2.already_tried_urls),
-            ).amaterialize_concluding_message()
+            pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
+            pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
 
-    ctx.respond(pdf_msg)
-
-
-@forum.agent(alias="PDF_FINDER_AGENT")
-async def pdf_finder_no_proxy(
-    ctx: InteractionContext, depth: int = MAX_DEPTH, already_tried_urls: tuple[str, ...] = ()
-) -> None:
-    """
-    TODO Oleksandr: introduce the concept of proxy agents at the level of the AgentForum framework ?
-    """
-    already_tried_urls = {*await acollect_tried_urls(ctx), *already_tried_urls}
-    try:
-        if depth <= 0:
-            raise TooManyStepsError("I couldn't find a PDF document within a reasonable number of steps.")
-
-        query_or_url = await ctx.request_messages.amaterialize_concluding_content()
-
-        if is_valid_url(query_or_url):
-            async with get_httpx_client() as httpx_client:
-                httpx_response = await httpx_client.get(query_or_url)
-
-            if "application/pdf" in httpx_response.headers["content-type"]:
-                # pdf was found! returning its text
-
-                print("\n\033[90mOPENING PDF FROM URL:", query_or_url, "\033[0m")
-
-                pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
-                pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
-
-                await aassert_pdf_is_correct(ctx, pdf_text)
-                ctx.respond(pdf_text)
+            is_pdf_correct = await averify_pdf_is_correct(ctx, pdf_text)
+            if is_pdf_correct.upper() != "MATCH":
+                # TODO Oleksandr: should be an exception (and move inside averify_pdf aka aassert_pdf)
+                pdf_finder_agent.quick_call(
+                    is_pdf_correct,
+                    beacon=beacon,
+                    failure=True,
+                    branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+                )
                 return
 
-            if "text/html" not in httpx_response.headers["content-type"]:
-                raise ForumVersusGaiaError(
-                    f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead."
-                )
-
-            print("\n\033[90mNAVIGATING TO:", query_or_url, "\033[0m")
-
-            prompt_header_template = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
-            prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
-
-        else:
-            print("\n\033[90mSEARCHING PDF:", query_or_url, "\033[0m")
-
-            organic_results = get_serpapi_results(query_or_url)
-            organic_results = [
-                result for result in organic_results if result["link"].strip() not in already_tried_urls
-            ]
-
-            prompt_header_template = EXTRACT_PDF_URL_PROMPT
-            prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
-
-        prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
-        page_url = await talk_to_gpt(
-            ctx=ctx,
-            prompt_header_template=prompt_header_template,
-            prompt_context=prompt_context,
-            pl_tags=[f"d{depth}"],
-        )
-
-        assert_valid_url(page_url)
-        ctx.respond(
-            pdf_finder_no_proxy.quick_call(
-                page_url,
+            pdf_finder_agent.quick_call(
+                pdf_text,
+                beacon=beacon,
                 branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-                depth=depth - 1,
-                already_tried_urls=tuple(already_tried_urls),
             )
+            return
+
+        if "text/html" not in httpx_response.headers["content-type"]:
+            # TODO Oleksandr: should be an exception
+            pdf_finder_agent.quick_call(
+                f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead.",
+                beacon=beacon,
+                failure=True,
+                branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+            )
+            return
+
+        print("\n\033[90mNAVIGATING TO:", query_or_url, "\033[0m")
+
+        prompt_header_template = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
+        prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
+
+    else:
+        print("\n\033[90mSEARCHING PDF:", query_or_url, "\033[0m")
+
+        organic_results = get_serpapi_results(query_or_url)
+        organic_results = [result for result in organic_results if result["link"].strip() not in already_tried_urls]
+
+        prompt_header_template = EXTRACT_PDF_URL_PROMPT
+        prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
+
+    prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
+    page_url = await talk_to_gpt(
+        ctx=ctx,
+        prompt_header_template=prompt_header_template,
+        prompt_context=prompt_context,
+        pl_tags=[f"d{depth}"],
+    )
+
+    if not is_valid_url(page_url):
+        # TODO Oleksandr: should be an exception (use assert_valid_url instead of is_valid_url)
+        pdf_finder_agent.quick_call(
+            page_url,
+            beacon=beacon,
+            failure=True,
+            branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
         )
-    except Exception as exc:  # pylint: disable=broad-except
-        raise ForumVersusGaiaError(str(exc), already_tried_urls=already_tried_urls) from exc
+        return
+
+    pdf_browsing_agent.quick_call(
+        page_url,
+        depth=depth - 1,
+        beacon=beacon,
+        branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+    )
 
 
 async def talk_to_gpt(
@@ -208,14 +215,7 @@ async def talk_to_gpt(
             "role": "system",
         },
         {
-            "content": render_conversation(
-                await ctx.request_messages.amaterialize_full_history(),
-                alias_resolver=lambda msg: (
-                    f"{msg.sender_alias} - {'NAVIGATE TO' if is_valid_url(msg.content.strip()) else 'RESULT'}"
-                    if msg.sender_alias == ctx.this_agent.alias
-                    else "USER"
-                ),
-            ),
+            "content": render_conversation(await ctx.request_messages.amaterialize_full_history()),
             "role": "user",
         },
         {
@@ -254,7 +254,7 @@ def remove_tried_urls_in_markdown(prompt_context: str, tried_urls: set[str]) -> 
     return prompt_context
 
 
-async def aassert_pdf_is_correct(ctx: InteractionContext, pdf_text: str) -> None:
+async def averify_pdf_is_correct(ctx: InteractionContext, pdf_text: str) -> str:
     """
     Ask GPT-4 if this PDF is the one that was referenced in the original question.
     """
@@ -295,6 +295,4 @@ async def aassert_pdf_is_correct(ctx: InteractionContext, pdf_text: str) -> None
         ],
         pl_tags=["CHECK_PDF"],
     ).amaterialize_content()
-    answer = answer.strip()
-    if answer.upper() != "MATCH":
-        raise ForumVersusGaiaError(answer)
+    return answer.strip()

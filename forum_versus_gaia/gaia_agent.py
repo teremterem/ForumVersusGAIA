@@ -24,7 +24,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     """
     A general AI assistant that can answer questions that require research.
     """
-    content = await pdf_finder_agent.quick_call(ctx.request_messages).amaterialize_concluding_content()
+    context_msgs = pdf_finder_agent.quick_call(ctx.request_messages)
     prompt = [
         {
             "content": GAIA_SYSTEM_PROMPT,
@@ -34,10 +34,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             "content": "In order to answer the question use the following info:",
             "role": "system",
         },
-        {
-            "content": content,
-            "role": "user",
-        },
+        *await context_msgs.amaterialize_as_list(),
         {
             "content": "HERE GOES THE QUESTION:",
             "role": "system",
