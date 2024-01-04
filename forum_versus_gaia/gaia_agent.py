@@ -26,12 +26,12 @@ RESPONSES: dict[str, asyncio.Queue] = {}
 
 
 @forum.agent
-async def gaia_agent(ctx: InteractionContext, beacon: Optional[str] = None, **kwargs) -> None:
+async def gaia_agent(ctx: InteractionContext, beacon: Optional[str] = None, failure: bool = False, **kwargs) -> None:
     """
     A general AI assistant that can answer questions that require research.
     """
     if beacon is not None:
-        RESPONSES.pop(beacon).put_nowait(ctx.request_messages)
+        RESPONSES.pop(beacon).put_nowait((ctx.request_messages, failure))
         return
 
     beacon = secrets.token_hex(4)
@@ -39,7 +39,9 @@ async def gaia_agent(ctx: InteractionContext, beacon: Optional[str] = None, **kw
 
     pdf_finder_agent.quick_call(ctx.request_messages, beacon=beacon)
 
-    context_msgs = await (await RESPONSES[beacon].get()).amaterialize_as_list()
+    context_msgs, failure = await RESPONSES[beacon].get()
+    context_msgs = await context_msgs.amaterialize_as_list()
+
     prompt = [
         {
             "content": GAIA_SYSTEM_PROMPT,

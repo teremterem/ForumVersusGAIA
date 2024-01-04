@@ -15,9 +15,6 @@ from forum_versus_gaia.utils import (
     get_httpx_client,
     is_valid_url,
     convert_html_to_markdown,
-    TooManyStepsError,
-    ForumVersusGaiaError,
-    assert_valid_url,
 )
 
 EXTRACT_PDF_URL_PROMPT = """\
@@ -94,8 +91,17 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
 @forum.agent
 async def browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon: Optional[str] = None) -> None:
     # TODO Oleksandr: add a docstring
+    from forum_versus_gaia.gaia_agent import gaia_agent  # pylint: disable=import-outside-toplevel,cyclic-import
+
     if depth <= 0:
-        raise TooManyStepsError("I couldn't find a PDF document within a reasonable number of steps.")
+        # TODO Oleksandr: should be an exception
+        gaia_agent.quick_call(
+            "I couldn't find a PDF document within a reasonable number of steps.",
+            beacon=beacon,
+            failure=True,
+            branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+        )
+        return
 
     query_or_url = await ctx.request_messages.amaterialize_concluding_content()
     already_tried_urls = await acollect_tried_urls(ctx)
@@ -111,9 +117,16 @@ async def browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
 
-            await aassert_pdf_is_correct(ctx, pdf_text)
-
-            from forum_versus_gaia.gaia_agent import gaia_agent
+            is_pdf_correct = await averify_pdf_is_correct(ctx, pdf_text)
+            if is_pdf_correct.upper() != "MATCH":
+                # TODO Oleksandr: should be an exception (and move inside averify_pdf aka aassert_pdf)
+                gaia_agent.quick_call(
+                    f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead.",
+                    beacon=beacon,
+                    failure=True,
+                    branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+                )
+                return
 
             gaia_agent.quick_call(
                 pdf_text,
@@ -123,9 +136,14 @@ async def browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon
             return
 
         if "text/html" not in httpx_response.headers["content-type"]:
-            raise ForumVersusGaiaError(
-                f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead."
+            # TODO Oleksandr: should be an exception
+            gaia_agent.quick_call(
+                f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead.",
+                beacon=beacon,
+                failure=True,
+                branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
             )
+            return
 
         print("\n\033[90mNAVIGATING TO:", query_or_url, "\033[0m")
 
@@ -149,7 +167,16 @@ async def browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon
         pl_tags=[f"d{depth}"],
     )
 
-    assert_valid_url(page_url)
+    if not is_valid_url(page_url):
+        # TODO Oleksandr: should be an exception (use assert_valid_url instead of is_valid_url)
+        gaia_agent.quick_call(
+            page_url,
+            beacon=beacon,
+            failure=True,
+            branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+        )
+        return
+
     browsing_agent.quick_call(
         page_url,
         depth=depth - 1,
@@ -219,7 +246,7 @@ def remove_tried_urls_in_markdown(prompt_context: str, tried_urls: set[str]) -> 
     return prompt_context
 
 
-async def aassert_pdf_is_correct(ctx: InteractionContext, pdf_text: str) -> None:
+async def averify_pdf_is_correct(ctx: InteractionContext, pdf_text: str) -> str:
     """
     Ask GPT-4 if this PDF is the one that was referenced in the original question.
     """
@@ -260,6 +287,4 @@ async def aassert_pdf_is_correct(ctx: InteractionContext, pdf_text: str) -> None
         ],
         pl_tags=["CHECK_PDF"],
     ).amaterialize_content()
-    answer = answer.strip()
-    if answer.upper() != "MATCH":
-        raise ForumVersusGaiaError(answer)
+    return answer.strip()
