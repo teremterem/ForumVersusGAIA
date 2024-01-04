@@ -1,10 +1,6 @@
 """
 Try out a question from the GAIA dataset.
 """
-import asyncio
-import secrets
-from typing import Optional
-
 from agentforum.forum import InteractionContext
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion
@@ -22,26 +18,13 @@ If you are asked for a comma separated list, apply the above rules depending of 
 list is a number or a string.\
 """
 
-RESPONSES: dict[str, asyncio.Queue] = {}
-
 
 @forum.agent
-async def gaia_agent(ctx: InteractionContext, beacon: Optional[str] = None, failure: bool = False, **kwargs) -> None:
+async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     """
     A general AI assistant that can answer questions that require research.
     """
-    if beacon is not None:
-        RESPONSES.pop(beacon).put_nowait((ctx.request_messages, failure))
-        return
-
-    beacon = secrets.token_hex(4)
-    RESPONSES[beacon] = asyncio.Queue()
-
-    pdf_finder_agent.quick_call(ctx.request_messages, beacon=beacon)
-
-    context_msgs, failure = await RESPONSES[beacon].get()
-    context_msgs = await context_msgs.amaterialize_as_list()
-
+    context_msgs = pdf_finder_agent.quick_call(ctx.request_messages)
     prompt = [
         {
             "content": GAIA_SYSTEM_PROMPT,
@@ -51,13 +34,7 @@ async def gaia_agent(ctx: InteractionContext, beacon: Optional[str] = None, fail
             "content": "In order to answer the question use the following info:",
             "role": "system",
         },
-        *(
-            {
-                "content": context_msg.content,
-                "role": "user",
-            }
-            for context_msg in context_msgs
-        ),
+        *await context_msgs.amaterialize_as_list(),
         {
             "content": "HERE GOES THE QUESTION:",
             "role": "system",

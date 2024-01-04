@@ -1,8 +1,10 @@
 """
 This module contains an agent that finds PDF documents on the internet.
 """
+import asyncio
 import io
 import json
+import secrets
 from typing import Optional
 
 import pypdf
@@ -45,17 +47,23 @@ Begin!
 Thought:\
 """
 
-# MAX_RETRIES = 3
+MAX_RETRIES = 3
 MAX_DEPTH = 7
+
+RESPONSES: dict[str, asyncio.Queue] = {}
 
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None) -> None:
+async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None, failure: bool = False) -> None:
     """
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
     a webpage.
     """
+    if beacon is not None:
+        RESPONSES.pop(beacon).put_nowait((ctx.request_messages, failure))
+        return
+
     prompt = [
         {
             "content": (
@@ -65,9 +73,7 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
             "role": "system",
         },
         {
-            "content": render_conversation(
-                await ctx.request_messages.amaterialize_full_history(), alias_resolver="USER"
-            ),
+            "content": render_conversation(await ctx.request_messages.amaterialize_full_history()),
             "role": "user",
         },
         {
@@ -79,23 +85,32 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
     query = query.split("Search Query:")[1]
     query = query.split("\n\n")[0].strip()
 
-    browsing_agent.quick_call(
-        query,
-        beacon=beacon,
-        # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message
-        #  id or even a message sequence (but not your own list of messages ?)
-        branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-    )
+    responses = ctx.request_messages  # this is just for convenience - it will be overwritten later
+    for _ in range(MAX_RETRIES):
+        beacon = secrets.token_hex(4)
+        RESPONSES[beacon] = asyncio.Queue()
+
+        pdf_browsing_agent.quick_call(
+            query,
+            beacon=beacon,
+            # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message
+            #  id or even a message sequence (but not your own list of messages ?)
+            branch_from=await responses.aget_concluding_msg_promise(),
+        )
+
+        responses, failure = await RESPONSES[beacon].get()
+        if not failure:
+            break
+
+    ctx.respond(responses)
 
 
-@forum.agent
-async def browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon: Optional[str] = None) -> None:
+@forum.agent(alias="BROWSING_AGENT")
+async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon: Optional[str] = None) -> None:
     # TODO Oleksandr: add a docstring
-    from forum_versus_gaia.gaia_agent import gaia_agent  # pylint: disable=import-outside-toplevel,cyclic-import
-
     if depth <= 0:
         # TODO Oleksandr: should be an exception
-        gaia_agent.quick_call(
+        pdf_finder_agent.quick_call(
             "I couldn't find a PDF document within a reasonable number of steps.",
             beacon=beacon,
             failure=True,
@@ -120,7 +135,7 @@ async def browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon
             is_pdf_correct = await averify_pdf_is_correct(ctx, pdf_text)
             if is_pdf_correct.upper() != "MATCH":
                 # TODO Oleksandr: should be an exception (and move inside averify_pdf aka aassert_pdf)
-                gaia_agent.quick_call(
+                pdf_finder_agent.quick_call(
                     f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead.",
                     beacon=beacon,
                     failure=True,
@@ -128,7 +143,7 @@ async def browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon
                 )
                 return
 
-            gaia_agent.quick_call(
+            pdf_finder_agent.quick_call(
                 pdf_text,
                 beacon=beacon,
                 branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
@@ -137,7 +152,7 @@ async def browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon
 
         if "text/html" not in httpx_response.headers["content-type"]:
             # TODO Oleksandr: should be an exception
-            gaia_agent.quick_call(
+            pdf_finder_agent.quick_call(
                 f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead.",
                 beacon=beacon,
                 failure=True,
@@ -169,7 +184,7 @@ async def browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon
 
     if not is_valid_url(page_url):
         # TODO Oleksandr: should be an exception (use assert_valid_url instead of is_valid_url)
-        gaia_agent.quick_call(
+        pdf_finder_agent.quick_call(
             page_url,
             beacon=beacon,
             failure=True,
@@ -177,7 +192,7 @@ async def browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon
         )
         return
 
-    browsing_agent.quick_call(
+    pdf_browsing_agent.quick_call(
         page_url,
         depth=depth - 1,
         beacon=beacon,
@@ -200,14 +215,7 @@ async def talk_to_gpt(
             "role": "system",
         },
         {
-            "content": render_conversation(
-                await ctx.request_messages.amaterialize_full_history(),
-                alias_resolver=lambda msg: (
-                    f"{msg.sender_alias} - {'NAVIGATE TO' if is_valid_url(msg.content.strip()) else 'RESULT'}"
-                    if msg.sender_alias == ctx.this_agent.alias
-                    else "USER"
-                ),
-            ),
+            "content": render_conversation(await ctx.request_messages.amaterialize_full_history()),
             "role": "user",
         },
         {
