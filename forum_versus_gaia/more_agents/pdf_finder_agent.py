@@ -107,7 +107,9 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
 
 @forum.agent(alias="BROWSING_AGENT")
 async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon: Optional[str] = None) -> None:
-    # TODO Oleksandr: add a docstring
+    """
+    Navigates the web to find a PDF document that satisfies the user's request.
+    """
     if depth <= 0:
         # TODO Oleksandr: should be an exception
         pdf_finder_agent.quick_call(
@@ -285,10 +287,15 @@ async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
             {
                 "content": (
                     "Please extract a snippet or snippets from the PDF document that you think are relevant to the "
-                    "user's request. If the PDF document does not contain any relevant information then respond with "
-                    "only one word - MISMATCH\n"
+                    "user's request. Use the following format:\n"
                     "\n"
-                    "Go!"
+                    "PDF: briefly explain what this pdf is about\n"
+                    "SNIPPET: a snippet or snippets relevant to the user's request\n"
+                    "\n"
+                    "If the PDF document does not contain any relevant information then respond with only one word - "
+                    "MISMATCH\n"
+                    "\n"
+                    "Begin!"
                 ),
                 "role": "system",
             },
