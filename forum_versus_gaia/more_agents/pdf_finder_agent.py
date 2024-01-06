@@ -107,7 +107,9 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
 
 @forum.agent(alias="BROWSING_AGENT")
 async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon: Optional[str] = None) -> None:
-    # TODO Oleksandr: add a docstring
+    """
+    Navigates the web to find a PDF document that satisfies the user's request.
+    """
     if depth <= 0:
         # TODO Oleksandr: should be an exception
         pdf_finder_agent.quick_call(
@@ -164,9 +166,10 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
 
         prompt_header_template = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
         prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
+        prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
 
     else:
-        print("\n\033[90m🌐 SEARCHING PDF:", query_or_url, "\033[0m")
+        print("\n\033[90m🔍 LOOKING FOR PDF:", query_or_url, "\033[0m")
 
         organic_results = get_serpapi_results(query_or_url)
         organic_results = [result for result in organic_results if result["link"].strip() not in already_tried_urls]
@@ -174,8 +177,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
         prompt_header_template = EXTRACT_PDF_URL_PROMPT
         prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
 
-    prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
-    page_url = await talk_to_gpt(
+    page_url = await ask_gpt_for_url(
         ctx=ctx,
         prompt_header_template=prompt_header_template,
         prompt_context=prompt_context,
@@ -200,7 +202,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
     )
 
 
-async def talk_to_gpt(
+async def ask_gpt_for_url(
     ctx: InteractionContext,
     prompt_header_template: str,
     prompt_context: str,
@@ -285,10 +287,17 @@ async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
             {
                 "content": (
                     "Please extract a snippet or snippets from the PDF document that you think are relevant to the "
-                    "user's request. If the PDF document does not contain any relevant information then respond with "
-                    "only one word - MISMATCH\n"
+                    "user's request. Use the following format:\n"
                     "\n"
-                    "Go!"
+                    "PDF TITLE: the title of the pdf\n"
+                    "DESCRIPTION: briefly explain what this pdf is about\n"
+                    "RELEVANT SNIPPET(S): a snippet or snippets relevant to the user's request (make sure to capture "
+                    "a couple of surrounding sentences too)\n"
+                    "\n"
+                    "If the PDF document does not contain any relevant information then respond with only one word - "
+                    "MISMATCH\n"
+                    "\n"
+                    "Begin!"
                 ),
                 "role": "system",
             },
