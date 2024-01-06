@@ -164,6 +164,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
 
         prompt_header_template = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
         prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
+        prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
 
     else:
         print("\n\033[90m🔍 LOOKING FOR PDF:", query_or_url, "\033[0m")
@@ -174,7 +175,6 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
         prompt_header_template = EXTRACT_PDF_URL_PROMPT
         prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
 
-    prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
     page_url = await talk_to_gpt(
         ctx=ctx,
         prompt_header_template=prompt_header_template,
