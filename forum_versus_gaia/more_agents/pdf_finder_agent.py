@@ -177,7 +177,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
         prompt_header_template = EXTRACT_PDF_URL_PROMPT
         prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
 
-    page_url = await talk_to_gpt(
+    page_url = await ask_gpt_for_url(
         ctx=ctx,
         prompt_header_template=prompt_header_template,
         prompt_context=prompt_context,
@@ -202,7 +202,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
     )
 
 
-async def talk_to_gpt(
+async def ask_gpt_for_url(
     ctx: InteractionContext,
     prompt_header_template: str,
     prompt_context: str,
