@@ -69,8 +69,8 @@ async def amain() -> None:
     Run the assistant on a question from the GAIA dataset.
     """
     question = (
-        "On June 6, 2023, an article by Carolyn Collins Petersen was published in Universe Today. This article "
-        "mentions a team that produced a paper about their observations, linked at the bottom of the article. "
-        "Find this paper. Under what NASA award number was the work performed by R. G. Arendt supported by?"
+        "Take the gender split from the 2011 Bulgarian census about those who have completed tertiary education. "
+        "Subtract the smaller number from the larger number, then return the difference in thousands of women. "
+        'So if there were 30.1 thousand more men, you\'d give "30.1"'
     )
     await arun_assistant(question)
