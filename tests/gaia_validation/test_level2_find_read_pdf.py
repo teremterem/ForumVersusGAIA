@@ -1,5 +1,5 @@
 """
-GAIA validation set. Level 2 samples that involve finding and reading PDF files and doing some calculations.
+GAIA validation set. Level 2 samples that involve finding and reading PDF files.
 """
 import pytest
 

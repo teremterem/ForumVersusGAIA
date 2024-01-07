@@ -45,3 +45,17 @@ async def test_nasa_award():
     )
     answer = await arun_assistant(question)
     assert answer == "80GSFC21M0002"
+
+
+@pytest.mark.asyncio
+async def test_bert_base_blocks():
+    """
+    Test that the question about the number of blocks in BERT base encoder vs the encoder from the architecture
+    proposed in Attention is All You Need is answered correctly.
+    """
+    question = (
+        "How many more blocks (also denoted as layers) in BERT base encoder than the encoder from the "
+        "architecture proposed in Attention is All You Need?"
+    )
+    answer = await arun_assistant(question)
+    assert answer == "6"
