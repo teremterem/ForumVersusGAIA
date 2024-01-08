@@ -40,7 +40,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             "role": "system",
         },
         # TODO Oleksandr: should be possible to just send ctx.request_messages instead of *...
-        *await ctx.request_messages.amaterialize_full_history(),
+        *await ctx.request_messages.amaterialize_as_list(),
     ]
     ctx.respond(slow_gpt_completion(prompt=prompt, pl_tags=["FINISH"], **kwargs))
 
@@ -69,8 +69,8 @@ async def amain() -> None:
     Run the assistant on a question from the GAIA dataset.
     """
     question = (
-        "On June 6, 2023, an article by Carolyn Collins Petersen was published in Universe Today. This article "
-        "mentions a team that produced a paper about their observations, linked at the bottom of the article. "
-        "Find this paper. Under what NASA award number was the work performed by R. G. Arendt supported by?"
+        "What integer-rounded percentage of the total length of the harlequin shrimp recorded in Omar "
+        "Valencfia-Mendez 2017 paper was the sea star fed to the same type of shrimp in G. Curt Fiedler's 2002 "
+        "paper?"
     )
     await arun_assistant(question)
