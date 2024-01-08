@@ -34,13 +34,17 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             "content": "In order to answer the question use the following info:",
             "role": "system",
         },
+        # TODO Oleksandr: should be possible to just send ctx.request_messages instead of *...
         *await context_msgs.amaterialize_as_list(),
         {
             "content": "HERE GOES THE QUESTION:",
             "role": "system",
         },
-        # TODO Oleksandr: should be possible to just send ctx.request_messages instead of *...
         *await ctx.request_messages.amaterialize_as_list(),
+        {
+            "content": "If there is not enough info to answer the question, answer with: NOT ENOUGH INFO\n\nBegin!",
+            "role": "system",
+        },
     ]
     ctx.respond(slow_gpt_completion(prompt=prompt, pl_tags=["FINISH"], **kwargs))
 
