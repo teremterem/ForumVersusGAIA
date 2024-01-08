@@ -40,7 +40,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             "role": "system",
         },
         # TODO Oleksandr: should be possible to just send ctx.request_messages instead of *...
-        *await ctx.request_messages.amaterialize_full_history(),
+        *await ctx.request_messages.amaterialize_as_list(),
     ]
     ctx.respond(slow_gpt_completion(prompt=prompt, pl_tags=["FINISH"], **kwargs))
 
