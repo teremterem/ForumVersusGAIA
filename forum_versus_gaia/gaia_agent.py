@@ -3,7 +3,7 @@ Try out a question from the GAIA dataset.
 """
 from agentforum.forum import InteractionContext
 
-from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion
+from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion, fast_gpt_completion
 from forum_versus_gaia.more_agents.pdf_finder_agent import pdf_finder_agent
 
 GAIA_SYSTEM_PROMPT = """\
@@ -41,12 +41,52 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             "role": "system",
         },
         *await ctx.request_messages.amaterialize_as_list(),
+    ]
+    answer_msg = slow_gpt_completion(prompt=prompt, pl_tags=["FINISH"], **kwargs)
+    ctx.respond(answer_msg)
+
+    prompt = [
         {
-            "content": "If there is not enough info to answer the question, answer with: NOT ENOUGH INFO\n\nBegin!",
+            "content": (
+                "Your job is to judge whether the user's question was answered or not. Here is the user's question:"
+            ),
+            "role": "system",
+        },
+        *await ctx.request_messages.amaterialize_as_list(),
+        {
+            "content": "Here is the context that was used to answer the user's question:",
+            "role": "system",
+        },
+        *await context_msgs.amaterialize_as_list(),
+        {
+            "content": "And here is the answer itself:",
+            "role": "system",
+        },
+        {
+            "content": await answer_msg.amaterialize_content(),
+            "role": "assistant",
+        },
+        {
+            "content": (
+                "Choose a single option that best describes what happened:\n"
+                "\n"
+                "1. The question was answered.\n"
+                "2. There was not enough information in the context to answer the question.\n"
+                "3. None of the above.\n"
+                "\n"
+                "Answer with a single number and no other text.\n"
+                "\n"
+                "ANSWER:"
+            ),
             "role": "system",
         },
     ]
-    ctx.respond(slow_gpt_completion(prompt=prompt, pl_tags=["FINISH"], **kwargs))
+    option_msg = fast_gpt_completion(prompt=prompt, pl_tags=["FINISH"], **kwargs)
+    print()
+    print()
+    print(await option_msg.amaterialize_content())
+    print()
+    print()
 
 
 async def arun_assistant(question: str) -> str:
