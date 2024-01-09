@@ -2,13 +2,14 @@
 google-search-results==2.4.2
 html2text==2020.1.16  # TODO Oleksandr: this one is GPL - try markdownify or Pandoc instead
 httpx==0.26.0
-langchain==0.0.353
+langchain==0.1.0
 langchainhub==0.1.14
 numexpr==2.8.8
-openai==1.6.1
+numpy==1.26.3
+openai==1.7.0
 pdfplumber==0.10.3  # TODO Oleksandr: remove this dependency ?
 promptlayer==0.4.0
 pypdf==3.17.4
-pytest==7.4.3
-pytest-asyncio==0.23.2
+pytest==7.4.4
+pytest-asyncio==0.23.3
 python-dotenv==1.0.0

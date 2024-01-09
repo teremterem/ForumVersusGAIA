@@ -1,6 +1,6 @@
 -c requirements.txt
 black==23.12.1
-ipython==8.19.0
+ipython==8.20.0
 jupyterlab==4.0.10  # does PyCharm support 4.x.x already ?
 pip-tools==7.3.0
 pre-commit==3.6.0
