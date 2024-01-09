@@ -9,7 +9,8 @@ from urllib.parse import urlparse
 
 import html2text
 import httpx
-from agentforum.models import Message
+import numpy as np
+from agentforum.models import Message, Freeform
 from serpapi import GoogleSearch
 
 from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS
@@ -128,3 +129,23 @@ def convert_html_to_markdown(html: str, baseurl: str = "") -> str:
     h = html2text.HTML2Text(baseurl=baseurl)
     h.ignore_links = False
     return h.handle(html)
+
+
+def calculate_perplexity(openai_metadata: Freeform) -> float:
+    """
+    Calculate perplexity from the log probabilities of tokens found in a message metadata.
+    """
+    log_probs = [logprob.logprob for logprob in openai_metadata.openai_logprobs]
+    average_log_prob = np.mean(log_probs)
+    perplexity = np.exp(-average_log_prob)
+    return perplexity
+
+
+def calculate_geometric_mean_of_probabilities(openai_metadata: Freeform) -> float:
+    """
+    Calculate the geometric mean of probabilities from the log probabilities of tokens found in a message metadata.
+    """
+    log_probs = [logprob.logprob for logprob in openai_metadata.openai_logprobs]
+    probs = np.exp(log_probs)
+    geometric_mean = np.prod(probs) ** (1 / len(probs))
+    return geometric_mean

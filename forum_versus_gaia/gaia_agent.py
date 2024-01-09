@@ -1,7 +1,6 @@
 """
 Try out a question from the GAIA dataset.
 """
-import numpy as np
 from agentforum.forum import InteractionContext
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion, fast_gpt_completion
@@ -43,28 +42,8 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
         },
         *await ctx.request_messages.amaterialize_as_list(),
     ]
-    answer_msg = slow_gpt_completion(prompt=prompt, logprobs=True, pl_tags=["FINISH"], **kwargs)
+    answer_msg = slow_gpt_completion(prompt=prompt, pl_tags=["FINISH"], **kwargs)
     ctx.respond(answer_msg)
-
-    log_probs = [logprob.logprob for logprob in (await answer_msg.amaterialize_metadata()).openai_logprobs]
-
-    probs = np.exp(log_probs)
-    geometric_mean = np.prod(probs) ** (1 / len(probs))
-    print()
-    print()
-    print()
-    print("geometric_mean:", geometric_mean)
-    print()
-    average_log_prob = np.mean(log_probs)
-    perplexity = np.exp(-average_log_prob)
-    print("perplexity:", perplexity)
-    print()
-    print()
-    # TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO
 
     prompt = [
         {
