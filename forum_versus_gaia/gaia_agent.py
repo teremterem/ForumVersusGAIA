@@ -102,7 +102,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             "role": "system",
         },
     ]
-    option_msg = fast_gpt_completion(prompt=prompt, pl_tags=["CHECK_ANSWER"], **kwargs)
+    option_msg = fast_gpt_completion(prompt=prompt, pl_tags=["CHECK_ANSWER"])
     print(await option_msg.amaterialize_content())
     print()
     print()
