@@ -1,6 +1,7 @@
 """
 Utilities for the ForumVersusGaia project.
 """
+import math
 import os
 from functools import lru_cache
 from typing import Any, Callable
@@ -157,5 +158,5 @@ def find_min_probability(openai_metadata: Freeform) -> float:
     """
     log_probs = [logprob.logprob for logprob in openai_metadata.openai_logprobs]
     min_log_prob = min(log_probs)
-    min_probability = np.exp(min_log_prob)
+    min_probability = math.exp(min_log_prob)
     return min_probability
