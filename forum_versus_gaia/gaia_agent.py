@@ -31,7 +31,16 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
         if research_idx > 0:
             ctx.respond("DOING MORE RESEARCH...")
 
-        context_msgs = pdf_finder_agent.quick_call([*accumulated_context, ctx.request_messages])
+        if accumulated_context:
+            context_str = "\n\n".join([msg.content for msg in accumulated_context])
+            context_msgs = pdf_finder_agent.quick_call(
+                [
+                    ctx.request_messages,
+                    f"Information that was found so far (no need to look for it again):\n\n{context_str}",
+                ]
+            )
+        else:
+            context_msgs = pdf_finder_agent.quick_call(ctx.request_messages)
 
         accumulated_context.extend(await context_msgs.amaterialize_as_list())
 
