@@ -296,6 +296,10 @@ async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
                     "If the PDF document does not contain any relevant information then respond with only one word - "
                     "MISMATCH\n"
                     "\n"
+                    "NOTE: It is ok if the PDF document contains some relevant information but not all. Answer with "
+                    "the word MISMATCH only if the PDF document does not contain ANY relevant information AT ALL, "
+                    "otherwise answer with the relevant snippet(s) that you were able to find.\n"
+                    "\n"
                     "Begin!"
                 ),
                 "role": "system",
