@@ -27,7 +27,10 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     A general AI assistant that can answer questions that require research.
     """
     accumulated_context = []
-    for _ in range(MAX_NUM_OF_RESEARCHES):
+    for research_idx in range(MAX_NUM_OF_RESEARCHES):
+        if research_idx > 0:
+            ctx.respond("DOING MORE RESEARCH...")
+
         context_msgs = pdf_finder_agent.quick_call([*accumulated_context, ctx.request_messages])
 
         accumulated_context.extend(await context_msgs.amaterialize_as_list())
@@ -92,7 +95,6 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             if char.isdigit():
                 if char == "1":
                     return  # the question was answered
-                ctx.respond("DOING MORE RESEARCH...")
                 break  # the question was not answered
 
 
