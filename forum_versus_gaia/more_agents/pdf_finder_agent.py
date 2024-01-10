@@ -36,7 +36,6 @@ Use the following format:
 
 Thought: you should always think out loud before you come up with a search query
 Search Query: the query to use to search for the PDF document
-Observation: here you speculate how well your search query might perform
 
 NOTE: You are using a special search engine that already knows that you're looking for PDFs, so you shouldn’t \
 include "PDF" or "filetype:pdf" or anything like that in your query. Also, don't try to search for any specific \
@@ -73,7 +72,7 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
             "role": "system",
         },
         {
-            "content": render_conversation(await ctx.request_messages.amaterialize_full_history()),
+            "content": render_conversation(await ctx.request_messages.amaterialize_as_list()),
             "role": "user",
         },
         {
@@ -81,7 +80,7 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
             "role": "system",
         },
     ]
-    query = await slow_gpt_completion(prompt=prompt, stop="\nObservation:", pl_tags=["START"]).amaterialize_content()
+    query = await slow_gpt_completion(prompt=prompt, pl_tags=["START"]).amaterialize_content()
     query = query.split("Search Query:")[1]
     query = query.split("\n\n")[0].strip()
 
