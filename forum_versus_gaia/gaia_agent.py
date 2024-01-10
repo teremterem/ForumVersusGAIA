@@ -18,78 +18,82 @@ If you are asked for a comma separated list, apply the above rules depending of 
 list is a number or a string.\
 """
 
+MAX_NUM_OF_RESEARCHES = 3
+
 
 @forum.agent
 async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     """
     A general AI assistant that can answer questions that require research.
     """
-    context_msgs = pdf_finder_agent.quick_call(ctx.request_messages)
-    prompt = [
-        {
-            "content": GAIA_SYSTEM_PROMPT,
-            "role": "system",
-        },
-        {
-            "content": "In order to answer the question use the following info:",
-            "role": "system",
-        },
-        # TODO Oleksandr: should be possible to just send ctx.request_messages instead of *...
-        *await context_msgs.amaterialize_as_list(),
-        {
-            "content": "HERE GOES THE QUESTION:",
-            "role": "system",
-        },
-        *await ctx.request_messages.amaterialize_as_list(),
-    ]
-    answer_msg = slow_gpt_completion(prompt=prompt, pl_tags=["FINISH"], **kwargs)
-    ctx.respond(answer_msg)
+    accumulated_context = []
+    for _ in range(MAX_NUM_OF_RESEARCHES):
+        context_msgs = pdf_finder_agent.quick_call([*accumulated_context, ctx.request_messages])
 
-    prompt = [
-        {
-            "content": (
-                "Your job is to judge whether the user's question was answered or not. Here is the user's question:"
-            ),
-            "role": "system",
-        },
-        *await ctx.request_messages.amaterialize_as_list(),
-        {
-            "content": "Here is the context that was used to answer the user's question:",
-            "role": "system",
-        },
-        *await context_msgs.amaterialize_as_list(),
-        {
-            "content": "And here is the answer itself:",
-            "role": "system",
-        },
-        {
-            "content": await answer_msg.amaterialize_content(),
-            "role": "assistant",
-        },
-        {
-            "content": (
-                "Choose a single option that best describes what happened:\n"
-                "\n"
-                "1. The question was answered.\n"
-                "2. There was not enough information in the context to answer the question.\n"
-                "3. None of the above.\n"
-                "\n"
-                "Answer with a single number and no other text.\n"
-                "\n"
-                "ANSWER:"
-            ),
-            "role": "system",
-        },
-    ]
-    option_msg = fast_gpt_completion(prompt=prompt, pl_tags=["CHECK_ANSWER"])
-    print(await option_msg.amaterialize_content())
-    print()
-    print()
-    # TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO
+        accumulated_context.extend(await context_msgs.amaterialize_as_list())
+
+        prompt = [
+            {
+                "content": GAIA_SYSTEM_PROMPT,
+                "role": "system",
+            },
+            {
+                "content": "In order to answer the question use the following info:",
+                "role": "system",
+            },
+            *accumulated_context,
+            {
+                "content": "HERE GOES THE QUESTION:",
+                "role": "system",
+            },
+            *await ctx.request_messages.amaterialize_as_list(),
+        ]
+        answer_msg = slow_gpt_completion(prompt=prompt, pl_tags=["FINISH"], **kwargs)
+        ctx.respond(answer_msg)
+
+        prompt = [
+            {
+                "content": (
+                    "Your job is to judge whether the user's question was answered or not. Here is the user's question:"
+                ),
+                "role": "system",
+            },
+            *await ctx.request_messages.amaterialize_as_list(),
+            {
+                "content": "Here is the context that was used to answer the user's question:",
+                "role": "system",
+            },
+            *await context_msgs.amaterialize_as_list(),
+            {
+                "content": "And here is the answer itself:",
+                "role": "system",
+            },
+            {
+                "content": await answer_msg.amaterialize_content(),
+                "role": "assistant",
+            },
+            {
+                "content": (
+                    "Choose a single option that best describes what happened:\n"
+                    "\n"
+                    "1. The question was answered.\n"
+                    "2. There was not enough information in the context to answer the question.\n"
+                    "3. None of the above.\n"
+                    "\n"
+                    "Answer with a single number and no other text.\n"
+                    "\n"
+                    "ANSWER:"
+                ),
+                "role": "system",
+            },
+        ]
+        option_msg = fast_gpt_completion(prompt=prompt, pl_tags=["CHECK_ANSWER"])
+        for char in await option_msg.amaterialize_content():
+            if char.isdigit():
+                if char == "1":
+                    return  # the question was answered
+                ctx.respond("DOING MORE RESEARCH...")
+                break  # the question was not answered
 
 
 async def arun_assistant(question: str) -> str:
