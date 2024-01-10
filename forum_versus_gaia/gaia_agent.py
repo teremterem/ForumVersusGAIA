@@ -57,7 +57,8 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
         prompt = [
             {
                 "content": (
-                    "Your job is to judge whether the user's question was answered or not. Here is the user's question:"
+                    "Your job is to judge whether the user's question was answered or not. Here is the user's "
+                    "question:"
                 ),
                 "role": "system",
             },
