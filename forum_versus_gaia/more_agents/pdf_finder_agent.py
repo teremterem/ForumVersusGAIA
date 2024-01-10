@@ -36,7 +36,8 @@ Use the following format:
 
 Thought: you should always think out loud before you come up with a search query
 Search Query: the query to use to search for the PDF document
-Observation: here you speculate how well your search query might perform
+
+If you need to search for multiple PDF documents then just repeat "Search Query:" multiple times.
 
 NOTE: You are using a special search engine that already knows that you're looking for PDFs, so you shouldn’t \
 include "PDF" or "filetype:pdf" or anything like that in your query. Also, don't try to search for any specific \
@@ -73,7 +74,7 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
             "role": "system",
         },
         {
-            "content": render_conversation(await ctx.request_messages.amaterialize_full_history()),
+            "content": render_conversation(await ctx.request_messages.amaterialize_as_list()),
             "role": "user",
         },
         {
@@ -81,28 +82,29 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
             "role": "system",
         },
     ]
-    query = await slow_gpt_completion(prompt=prompt, stop="\nObservation:", pl_tags=["START"]).amaterialize_content()
-    query = query.split("Search Query:")[1]
-    query = query.split("\n\n")[0].strip()
+    queries = await slow_gpt_completion(prompt=prompt, pl_tags=["START"]).amaterialize_content()
 
-    responses = ctx.request_messages  # this is just for convenience - it will be overwritten later
-    for _ in range(MAX_RETRIES):
-        beacon = secrets.token_hex(4)
-        RESPONSES[beacon] = asyncio.Queue()
+    for query in queries.split("Search Query:")[1:]:
+        query = query.split("\n\n")[0].strip()
 
-        pdf_browsing_agent.quick_call(
-            query,
-            beacon=beacon,
-            # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a message
-            #  id or even a message sequence (but not your own list of messages ?)
-            branch_from=await responses.aget_concluding_msg_promise(),
-        )
+        responses = ctx.request_messages  # this is just for convenience - it will be overwritten later
+        for _ in range(MAX_RETRIES):
+            beacon = secrets.token_hex(4)
+            RESPONSES[beacon] = asyncio.Queue()
 
-        responses, failure = await RESPONSES[beacon].get()
-        if not failure:
-            break
+            pdf_browsing_agent.quick_call(
+                query,
+                beacon=beacon,
+                # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a
+                #  message id or even a message sequence (but not your own list of messages ?)
+                branch_from=await responses.aget_concluding_msg_promise(),
+            )
 
-    ctx.respond(responses)
+            responses, failure = await RESPONSES[beacon].get()
+            if not failure:
+                break
+
+        ctx.respond(responses)
 
 
 @forum.agent(alias="BROWSING_AGENT")
@@ -296,6 +298,10 @@ async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
                     "\n"
                     "If the PDF document does not contain any relevant information then respond with only one word - "
                     "MISMATCH\n"
+                    "\n"
+                    'ATTENTION! DO NOT ANSWER WITH "MISMATCH" IF YOU WERE ABLE TO FIND EVEN A TINY BIT OF RELEVANT '
+                    'INFORMATION. "MISMATCH" is ONLY for cases when there was NOT EVEN A SINGLE PIECE of relevant '
+                    "information (ABSOLUTE ZERO)!\n"
                     "\n"
                     "Begin!"
                 ),
