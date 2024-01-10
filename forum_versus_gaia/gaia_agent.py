@@ -73,12 +73,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             },
             *await ctx.request_messages.amaterialize_as_list(),
             {
-                "content": "Here is the context that was used to answer the user's question:",
-                "role": "system",
-            },
-            *await context_msgs.amaterialize_as_list(),
-            {
-                "content": "And here is the answer itself:",
+                "content": "And here is the answer:",
                 "role": "system",
             },
             {
