@@ -149,3 +149,13 @@ def calculate_geometric_mean_of_probabilities(openai_metadata: Freeform) -> floa
     probs = np.exp(log_probs)
     geometric_mean = np.prod(probs) ** (1 / len(probs))
     return geometric_mean
+
+
+def find_min_probability(openai_metadata: Freeform) -> float:
+    """
+    Find the minimum probability of tokens found in a message metadata.
+    """
+    log_probs = [logprob.logprob for logprob in openai_metadata.openai_logprobs]
+    min_log_prob = min(log_probs)
+    min_probability = np.exp(min_log_prob)
+    return min_probability
