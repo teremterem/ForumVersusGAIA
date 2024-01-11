@@ -57,10 +57,10 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
                 "\n"
                 'If you need to search for multiple PDF documents then just repeat "Search Query:" multiple times.\n'
                 "\n"
-                "NOTE: You are using a special search engine that already knows that you're looking for PDFs, so "
-                'you shouldn\'t include "PDF" or "filetype:pdf" or anything like that in your query. Also, don\'t '
-                "try to search for any specific information that might be contained in the PDF, just search for the "
-                "PDF itself.\n"
+                "NOTE #1: You are using a special search engine that already knows that you're looking for PDFs, so "
+                'you shouldn\'t include "PDF" or "filetype:pdf" or anything like that in your query.\n'
+                "NOTE #2: Do not try to search for any specific information that might be contained in the PDF, "
+                "just search for the PDF itself.\n"
                 "\n"
                 "Begin!\n"
                 "\n"
