@@ -18,3 +18,16 @@ async def test_bulgarian_gender_split():
     )
     answer = await arun_assistant(question)
     assert answer == "234.9"
+
+
+@pytest.mark.asyncio
+async def test_freud_neurologist():
+    """
+    Test that the question about the neurologist in a book about Freud is answered correctly.
+    """
+    question = (
+        "The book with the doi 10.1353/book.24372 concerns a certain neurologist. According to chapter 2 of the "
+        "book, what author influenced this neurologist’s belief in “endopsychic myths”? Give the last name only."
+    )
+    answer = await arun_assistant(question)
+    assert answer == "Kleinpaul"

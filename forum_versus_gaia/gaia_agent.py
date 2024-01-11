@@ -116,6 +116,5 @@ async def arun_assistant(question: str) -> str:
     print()
 
     final_answer = await assistant_responses.amaterialize_concluding_content()
-    final_answer = final_answer.upper()
     final_answer = final_answer.split("FINAL ANSWER:")[1].strip()
     return final_answer
