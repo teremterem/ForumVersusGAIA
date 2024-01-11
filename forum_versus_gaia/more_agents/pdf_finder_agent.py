@@ -8,7 +8,7 @@ import secrets
 from typing import Optional
 
 import pypdf
-from agentforum.forum import InteractionContext
+from agentforum.forum import InteractionContext, USER_ALIAS
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion
 from forum_versus_gaia.utils import (
@@ -177,7 +177,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
         organic_results = [result for result in organic_results if result["link"].strip() not in already_tried_urls]
 
         prompt_header_template = EXTRACT_PDF_URL_PROMPT
-        prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
+        prompt_context = json.dumps(organic_results)
 
     page_url = await ask_gpt_for_url(
         ctx=ctx,
@@ -219,7 +219,7 @@ async def ask_gpt_for_url(
             "role": "system",
         },
         {
-            "content": render_conversation(await ctx.request_messages.amaterialize_full_history()),
+            "content": await render_user_utterances(ctx),
             "role": "user",
         },
         {
@@ -227,10 +227,7 @@ async def ask_gpt_for_url(
             "role": "user",
         },
         {
-            "content": (
-                "PLEASE ONLY RETURN A URL AND NO OTHER TEXT. "
-                "MAKE SURE NOT TO RETURN THE URLS THAT WERE ALREADY TRIED.\n\nURL:"
-            ),
+            "content": "PLEASE ONLY RETURN A URL AND NO OTHER TEXT.\n\nURL:",
             "role": "system",
         },
     ]
@@ -280,10 +277,7 @@ async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
                 "role": "system",
             },
             {
-                "content": render_conversation(
-                    await ctx.request_messages.amaterialize_full_history(),
-                    alias_resolver=lambda msg: msg.sender_alias if msg.sender_alias == "USER" else None,
-                ),
+                "content": await render_user_utterances(ctx),
                 "role": "user",
             },
             {
@@ -311,3 +305,13 @@ async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
         pl_tags=["READ_PDF"],
     ).amaterialize_content()
     return answer.strip()
+
+
+async def render_user_utterances(ctx: InteractionContext) -> str:
+    """
+    Render user utterances as a string.
+    """
+    return render_conversation(
+        await ctx.request_messages.amaterialize_full_history(),
+        alias_resolver=lambda msg: msg.sender_alias if msg.sender_alias == USER_ALIAS else None,
+    )

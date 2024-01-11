@@ -18,7 +18,7 @@ If you are asked for a comma separated list, apply the above rules depending of 
 list is a number or a string.\
 """
 
-MAX_NUM_OF_RESEARCHES = 3
+MAX_NUM_OF_RESEARCHES = 2
 
 
 @forum.agent
