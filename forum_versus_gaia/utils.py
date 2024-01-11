@@ -23,17 +23,19 @@ class ForumVersusGaiaError(Exception):
     Base class for all exceptions in the ForumVersusGaia project.
     """
 
-    def __init__(self, message: str, already_tried_urls: set[str] = ()) -> None:
-        super().__init__(message)
-        # TODO Oleksandr: get rid of this temporary hack:
-        self.already_tried_urls = already_tried_urls
-
 
 class NotAUrlError(ForumVersusGaiaError):
     """
     Raised when a string is not a valid URL. the message should only contain the invalid URL and nothing else (because
     it is most likely a message produced by an LLM explaining why the actual url could not be obtained, which was
     returned by the LLM instead of the URL).
+    """
+
+
+class ContentMismatchError(ForumVersusGaiaError):
+    """
+    Raised when the content that was found on the web (a PDF, a webpage, etc.) does not match what the user was looking
+    for.
     """
 
 

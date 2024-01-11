@@ -18,6 +18,7 @@ from forum_versus_gaia.utils import (
     is_valid_url,
     convert_html_to_markdown,
     num_tokens_from_messages,
+    ContentMismatchError,
 )
 
 MAX_RETRIES = 3
@@ -128,10 +129,11 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
 
-            pdf_snippets = await aextract_pdf_snippets(
-                pdf_text=pdf_text, user_request=await render_user_utterances(ctx)
-            )
-            if pdf_snippets.upper() == "MISMATCH":
+            try:
+                pdf_snippets = await aextract_pdf_snippets(
+                    pdf_text=pdf_text, user_request=await render_user_utterances(ctx)
+                )
+            except ContentMismatchError:
                 # TODO Oleksandr: should be an exception (and move inside aextract_pdf_snippets)
                 pdf_finder_agent.quick_call(
                     "This PDF document does not contain any relevant information.",
@@ -261,11 +263,16 @@ def remove_tried_urls_in_markdown(prompt_context: str, tried_urls: set[str]) -> 
 
 async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
     """
-    Extract snippets from a PDF document that are relevant to the user's request.
+    Extract snippets from a PDF document that are relevant to the user's request. If pdf_text is a wrong PDF
+    document or does not contain any useful information then ContentMismatchError is raised.
     """
     pdf_msgs = [
         {
-            "content": pdf_text,
+            "content": (
+                f"=============== PDF START ===============\n"
+                f"{pdf_text}\n"
+                f"================ PDF END ================"
+            ),
             "role": "user",
         },
     ]
@@ -317,18 +324,22 @@ async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
         ],
         pl_tags=["READ_PDF"],
     ).amaterialize_content()
-    return answer.strip()
+    answer = answer.strip()
+    if answer.upper() == "MISMATCH":
+        raise ContentMismatchError
+    return answer
 
 
 async def apartition_pdf_and_extract_snippets(pdf_text: str, user_request: str) -> str:
-    pdf_metadata = await agenerate_metadata_from_pdf_parts(pdf_text)
+    pdf_metadata = await agenerate_metadata_from_pdf_parts(pdf_text=pdf_text, user_request=user_request)
     return pdf_metadata
 
 
-async def agenerate_metadata_from_pdf_parts(pdf_text: str) -> str:
+async def agenerate_metadata_from_pdf_parts(pdf_text: str, user_request: str) -> str:
     pdf_beginning = pdf_text[:PDF_CHAR_WINDOW]
     pdf_middle = pdf_text[len(pdf_text) // 2 - PDF_CHAR_WINDOW // 2 : len(pdf_text) // 2 + PDF_CHAR_WINDOW // 2]
     pdf_end = pdf_text[-PDF_CHAR_WINDOW:]
+
     answer = await slow_gpt_completion(
         prompt=[
             {
@@ -343,11 +354,27 @@ async def agenerate_metadata_from_pdf_parts(pdf_text: str) -> str:
                 "role": "user",
             },
             {
+                "content": "And here is what the user asked for.",
+                "role": "system",
+            },
+            {
+                "content": user_request,
+                "role": "user",
+            },
+            {
                 "content": (
                     "Use the following format to describe the PDF:\n"
                     "\n"
                     "PDF TITLE: the title of the pdf\n"
                     "DESCRIPTION: briefly explain what this pdf is about\n"
+                    "\n"
+                    "If the PDF document does not seem to be the one that could be used to answer the user's "
+                    "question then end your answer with the word MISMATCH\n"
+                    "NOTE: You shouldn't judge whether the PDF document contains any relevant information or not "
+                    "solely by the presence/absence of the direct answer to the user's question in the content you "
+                    "see in the prompt above, because you are not given the full PDF document, you are given only "
+                    "parts of it. You should judge based on whether the PDF document in general seems to be the "
+                    "relevant one to the user's question or not.\n"
                     "\n"
                     "Begin!"
                 ),
@@ -356,7 +383,10 @@ async def agenerate_metadata_from_pdf_parts(pdf_text: str) -> str:
         ],
         pl_tags=["PDF_METADATA_FROM_PARTS"],
     ).amaterialize_content()
-    return answer.strip()
+    answer = answer.strip()
+    if answer.endswith("\nMISMATCH"):
+        raise ContentMismatchError
+    return answer
 
 
 async def render_user_utterances(ctx: InteractionContext) -> str:

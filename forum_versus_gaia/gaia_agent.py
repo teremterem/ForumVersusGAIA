@@ -6,7 +6,7 @@ from agentforum.forum import InteractionContext
 from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion, fast_gpt_completion
 from forum_versus_gaia.more_agents.pdf_finder_agent import pdf_finder_agent
 
-MAX_NUM_OF_RESEARCHES = 1  # 2
+MAX_NUM_OF_RESEARCHES = 2
 
 
 @forum.agent
