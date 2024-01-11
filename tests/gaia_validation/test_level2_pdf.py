@@ -31,3 +31,17 @@ async def test_freud_neurologist():
     )
     answer = await arun_assistant(question)
     assert answer == "Kleinpaul"
+
+
+@pytest.mark.asyncio
+async def test_elm_street():
+    """
+    Test that the question about the horror movie is answered correctly.
+    """
+    question = (
+        "In Valentina Re’s contribution to the 2017 book “World Building: Transmedia, Fans, Industries”, what "
+        "horror movie does the author cite as having popularized metalepsis between a dream world and reality? "
+        "Use the complete name with article if any."
+    )
+    answer = await arun_assistant(question)
+    assert answer == "A Nightmare on Elm Street"

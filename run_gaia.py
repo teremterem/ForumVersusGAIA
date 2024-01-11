@@ -22,8 +22,9 @@ async def amain() -> None:
     from forum_versus_gaia.gaia_agent import arun_assistant
 
     question = (
-        "The book with the doi 10.1353/book.24372 concerns a certain neurologist. According to chapter 2 of the "
-        "book, what author influenced this neurologist’s belief in “endopsychic myths”? Give the last name only."
+        "In Valentina Re’s contribution to the 2017 book “World Building: Transmedia, Fans, Industries”, what "
+        "horror movie does the author cite as having popularized metalepsis between a dream world and reality? "
+        "Use the complete name with article if any."
     )
     await arun_assistant(question)
 
