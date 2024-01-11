@@ -331,11 +331,25 @@ async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
 
 
 async def apartition_pdf_and_extract_snippets(pdf_text: str, user_request: str) -> str:
+    """
+    Partition a PDF document into chunks and extract snippets from each chunk that are relevant to the user's request.
+    If pdf_text is a wrong PDF document or does not contain any useful information then ContentMismatchError is
+    raised.
+    """
     pdf_metadata = await agenerate_metadata_from_pdf_parts(pdf_text=pdf_text, user_request=user_request)
+    # TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO
     return pdf_metadata
 
 
 async def agenerate_metadata_from_pdf_parts(pdf_text: str, user_request: str) -> str:
+    """
+    Generate metadata for a PDF document from its parts (beginning, middle and end). If pdf_text is a wrong PDF
+    document or does not contain any useful information then ContentMismatchError is raised.
+    """
     pdf_beginning = pdf_text[:PDF_CHAR_WINDOW]
     pdf_middle = pdf_text[len(pdf_text) // 2 - PDF_CHAR_WINDOW // 2 : len(pdf_text) // 2 + PDF_CHAR_WINDOW // 2]
     pdf_end = pdf_text[-PDF_CHAR_WINDOW:]
