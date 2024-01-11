@@ -119,15 +119,3 @@ async def arun_assistant(question: str) -> str:
     final_answer = final_answer.upper()
     final_answer = final_answer.split("FINAL ANSWER:")[1].strip()
     return final_answer
-
-
-async def amain() -> None:
-    """
-    Run the assistant on a question from the GAIA dataset.
-    """
-    question = (
-        "What integer-rounded percentage of the total length of the harlequin shrimp recorded in Omar "
-        "Valencfia-Mendez 2017 paper was the sea star fed to the same type of shrimp in G. Curt Fiedler's 2002 "
-        "paper?"
-    )
-    await arun_assistant(question)
