@@ -8,7 +8,7 @@ import secrets
 from typing import Optional
 
 import pypdf
-from agentforum.forum import InteractionContext
+from agentforum.forum import InteractionContext, USER_ALIAS
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion
 from forum_versus_gaia.utils import (
@@ -18,35 +18,6 @@ from forum_versus_gaia.utils import (
     is_valid_url,
     convert_html_to_markdown,
 )
-
-EXTRACT_PDF_URL_PROMPT = """\
-Your name is {AGENT_ALIAS}. You will be provided with a SerpAPI JSON response that contains a list of search results \
-for a given user query. The user is looking for a PDF document. Your job is to extract a URL that, in your opinion, \
-is the most likely to contain the PDF document the user is looking for.\
-"""
-
-EXTRACT_PDF_URL_FROM_PAGE_PROMPT = """\
-Your name is {AGENT_ALIAS}. You will be provided with the content of a web page that was found via web search with a \
-given user query. The user is looking for a PDF document. Your job is to extract from this web page a URL that, in \
-your opinion, is the most likely to lead to the PDF document the user is looking for.\
-"""
-
-PDF_QUERY_COT_PROMPT = """\
-Use the following format:
-
-Thought: you should always think out loud before you come up with a search query
-Search Query: the query to use to search for the PDF document
-
-If you need to search for multiple PDF documents then just repeat "Search Query:" multiple times.
-
-NOTE: You are using a special search engine that already knows that you're looking for PDFs, so you shouldn’t \
-include "PDF" or "filetype:pdf" or anything like that in your query. Also, don't try to search for any specific \
-information that might be contained in the PDF, just search for the PDF itself.
-
-Begin!
-
-Thought:\
-"""
 
 MAX_RETRIES = 3
 MAX_DEPTH = 7
@@ -78,7 +49,23 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
             "role": "user",
         },
         {
-            "content": PDF_QUERY_COT_PROMPT,
+            "content": (
+                "Use the following format:\n"
+                "\n"
+                "Thought: you should always think out loud before you come up with a search query\n"
+                "Search Query: the query to use to search for the PDF document\n"
+                "\n"
+                'If you need to search for multiple PDF documents then just repeat "Search Query:" multiple times.\n'
+                "\n"
+                "NOTE: You are using a special search engine that already knows that you're looking for PDFs, so "
+                'you shouldn\'t include "PDF" or "filetype:pdf" or anything like that in your query. Also, don\'t '
+                "try to search for any specific information that might be contained in the PDF, just search for the "
+                "PDF itself.\n"
+                "\n"
+                "Begin!\n"
+                "\n"
+                "Thought:"
+            ),
             "role": "system",
         },
     ]
@@ -166,7 +153,12 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
 
         print("\n\033[90m🔗 NAVIGATING TO:", query_or_url, "\033[0m")
 
-        prompt_header_template = EXTRACT_PDF_URL_FROM_PAGE_PROMPT
+        prompt_header_template = (
+            "Your name is {AGENT_ALIAS}. You will be provided with the content of a web page that was found via "
+            "web search with a given user query. The user is looking for a PDF document. Your job is to extract "
+            "from this web page a URL that, in your opinion, is the most likely to lead to the PDF document the "
+            "user is looking for."
+        )
         prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
         prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
 
@@ -176,8 +168,13 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
         organic_results = get_serpapi_results(query_or_url)
         organic_results = [result for result in organic_results if result["link"].strip() not in already_tried_urls]
 
-        prompt_header_template = EXTRACT_PDF_URL_PROMPT
-        prompt_context = f"SERPAPI SEARCH RESULTS: {json.dumps(organic_results)}"
+        prompt_header_template = (
+            "Your name is {AGENT_ALIAS}. You will be provided with a SerpAPI JSON response that contains a list "
+            "of search results for a given user query. The user is looking for a PDF document. Your job is to "
+            "extract a URL that, in your opinion, is the most likely to contain the PDF document the user is "
+            "looking for."
+        )
+        prompt_context = json.dumps(organic_results)
 
     page_url = await ask_gpt_for_url(
         ctx=ctx,
@@ -219,7 +216,7 @@ async def ask_gpt_for_url(
             "role": "system",
         },
         {
-            "content": render_conversation(await ctx.request_messages.amaterialize_full_history()),
+            "content": await render_user_utterances(ctx),
             "role": "user",
         },
         {
@@ -227,10 +224,7 @@ async def ask_gpt_for_url(
             "role": "user",
         },
         {
-            "content": (
-                "PLEASE ONLY RETURN A URL AND NO OTHER TEXT. "
-                "MAKE SURE NOT TO RETURN THE URLS THAT WERE ALREADY TRIED.\n\nURL:"
-            ),
+            "content": "PLEASE ONLY RETURN A URL AND NO OTHER TEXT.\n\nURL:",
             "role": "system",
         },
     ]
@@ -280,10 +274,7 @@ async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
                 "role": "system",
             },
             {
-                "content": render_conversation(
-                    await ctx.request_messages.amaterialize_full_history(),
-                    alias_resolver=lambda msg: msg.sender_alias if msg.sender_alias == "USER" else None,
-                ),
+                "content": await render_user_utterances(ctx),
                 "role": "user",
             },
             {
@@ -311,3 +302,13 @@ async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
         pl_tags=["READ_PDF"],
     ).amaterialize_content()
     return answer.strip()
+
+
+async def render_user_utterances(ctx: InteractionContext) -> str:
+    """
+    Render user utterances as a string.
+    """
+    return render_conversation(
+        await ctx.request_messages.amaterialize_full_history(),
+        alias_resolver=lambda msg: msg.sender_alias if msg.sender_alias == USER_ALIAS else None,
+    )
