@@ -17,6 +17,7 @@ from forum_versus_gaia.utils import (
     get_httpx_client,
     is_valid_url,
     convert_html_to_markdown,
+    num_tokens_from_messages,
 )
 
 MAX_RETRIES = 3
@@ -256,6 +257,18 @@ async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
     """
     Extract snippets from a PDF document that are relevant to the user's request.
     """
+    pdf_msgs = [
+        {
+            "content": pdf_text,
+            "role": "user",
+        },
+    ]
+    print(num_tokens_from_messages(pdf_msgs), "tokens")
+    # TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO
+    # TODO TODO TODO TODO TODO
     answer = await slow_gpt_completion(
         prompt=[
             {
@@ -265,10 +278,7 @@ async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
                 ),
                 "role": "system",
             },
-            {
-                "content": pdf_text,
-                "role": "user",
-            },
+            *pdf_msgs,
             {
                 "content": "And here is what the user asked for.",
                 "role": "system",
