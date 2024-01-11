@@ -23,6 +23,10 @@ from forum_versus_gaia.utils import (
 MAX_RETRIES = 3
 MAX_DEPTH = 7
 
+PDF_MAX_TOKENS = 100000
+PDF_CHAR_WINDOW = 10000
+PDF_CHAR_OVERLAP = 1000
+
 RESPONSES: dict[str, asyncio.Queue] = {}
 
 
@@ -124,7 +128,9 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
 
-            pdf_snippets = await aextract_pdf_snippets(ctx, pdf_text)
+            pdf_snippets = await aextract_pdf_snippets(
+                pdf_text=pdf_text, user_request=await render_user_utterances(ctx)
+            )
             if pdf_snippets.upper() == "MISMATCH":
                 # TODO Oleksandr: should be an exception (and move inside aextract_pdf_snippets)
                 pdf_finder_agent.quick_call(
@@ -253,7 +259,7 @@ def remove_tried_urls_in_markdown(prompt_context: str, tried_urls: set[str]) -> 
     return prompt_context
 
 
-async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
+async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
     """
     Extract snippets from a PDF document that are relevant to the user's request.
     """
@@ -263,12 +269,12 @@ async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
             "role": "user",
         },
     ]
-    print(num_tokens_from_messages(pdf_msgs), "tokens")
-    # TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO
-    # TODO TODO TODO TODO TODO
+    pdf_token_num = num_tokens_from_messages(pdf_msgs)
+    print(pdf_token_num, "tokens")
+
+    if pdf_token_num > PDF_MAX_TOKENS:
+        return await apartition_pdf_and_extract_snippets(pdf_text=pdf_text, user_request=user_request)
+
     answer = await slow_gpt_completion(
         prompt=[
             {
@@ -284,7 +290,7 @@ async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
                 "role": "system",
             },
             {
-                "content": await render_user_utterances(ctx),
+                "content": user_request,
                 "role": "user",
             },
             {
@@ -310,6 +316,45 @@ async def aextract_pdf_snippets(ctx: InteractionContext, pdf_text: str) -> str:
             },
         ],
         pl_tags=["READ_PDF"],
+    ).amaterialize_content()
+    return answer.strip()
+
+
+async def apartition_pdf_and_extract_snippets(pdf_text: str, user_request: str) -> str:
+    pdf_metadata = await agenerate_metadata_from_pdf_parts(pdf_text)
+    return pdf_metadata
+
+
+async def agenerate_metadata_from_pdf_parts(pdf_text: str) -> str:
+    pdf_beginning = pdf_text[:PDF_CHAR_WINDOW]
+    pdf_middle = pdf_text[len(pdf_text) // 2 - PDF_CHAR_WINDOW // 2 : len(pdf_text) // 2 + PDF_CHAR_WINDOW // 2]
+    pdf_end = pdf_text[-PDF_CHAR_WINDOW:]
+    answer = await slow_gpt_completion(
+        prompt=[
+            {
+                "content": (
+                    "You are an AI assistant and you are good at explaining what PDF documents are about. "
+                    "Below is a PDF document (some parts of it were omitted for brevity)."
+                ),
+                "role": "system",
+            },
+            {
+                "content": f"{pdf_beginning}...\n\n...{pdf_middle}...\n\n...{pdf_end}",
+                "role": "user",
+            },
+            {
+                "content": (
+                    "Use the following format to describe the PDF:\n"
+                    "\n"
+                    "PDF TITLE: the title of the pdf\n"
+                    "DESCRIPTION: briefly explain what this pdf is about\n"
+                    "\n"
+                    "Begin!"
+                ),
+                "role": "system",
+            },
+        ],
+        pl_tags=["PDF_METADATA_FROM_PARTS"],
     ).amaterialize_content()
     return answer.strip()
 
