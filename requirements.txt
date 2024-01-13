@@ -4,6 +4,8 @@
 #
 #    pip-compile --strip-extras
 #
+agentforum==0.0.5
+    # via -r requirements.in
 aiohttp==3.9.1
     # via
     #   langchain
@@ -70,15 +72,15 @@ jsonpointer==2.4
     # via jsonpatch
 langchain==0.1.0
     # via -r requirements.in
-langchain-community==0.0.11
+langchain-community==0.0.12
     # via langchain
-langchain-core==0.1.9
+langchain-core==0.1.10
     # via
     #   langchain
     #   langchain-community
 langchainhub==0.1.14
     # via -r requirements.in
-langsmith==0.0.79
+langsmith==0.0.80
     # via
     #   langchain
     #   langchain-community
@@ -99,7 +101,7 @@ numpy==1.26.3
     #   langchain
     #   langchain-community
     #   numexpr
-openai==1.7.1
+openai==1.7.2
     # via -r requirements.in
 packaging==23.2
     # via
@@ -120,6 +122,7 @@ pycparser==2.21
     # via cffi
 pydantic==2.5.3
     # via
+    #   agentforum
     #   langchain
     #   langchain-core
     #   langsmith
