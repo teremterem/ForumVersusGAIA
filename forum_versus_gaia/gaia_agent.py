@@ -105,7 +105,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
 
 async def arun_assistant(question: str) -> str:
     """Run the assistant. Return the final answer in upper case."""
-    print("\n\nQUESTION:", question)
+    print("\n\n\033[92;1mQUESTION:", question, "\033[0m")
 
     assistant_responses = gaia_agent.quick_call(question, stream=True)
 
