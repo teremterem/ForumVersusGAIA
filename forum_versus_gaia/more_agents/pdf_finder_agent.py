@@ -336,10 +336,11 @@ async def apartition_pdf_and_extract_snippets(pdf_text: str, user_request: str) 
     If pdf_text is a wrong PDF document or does not contain any useful information then ContentMismatchError is
     raised.
     """
-    pdf_metadata = await agenerate_metadata_from_pdf_parts(pdf_text=pdf_text, user_request=user_request)
-    # TODO Oleksandr
+    # TODO TODO TODO Oleksandr
     print("ERROR: PDF partitioning is not implemented yet")
-    raise NotImplementedError
+    raise ContentMismatchError
+    pdf_metadata = await agenerate_metadata_from_pdf_parts(pdf_text=pdf_text, user_request=user_request)
+    # TODO TODO TODO Oleksandr
     return pdf_metadata  # pylint: disable=unreachable
 
 
