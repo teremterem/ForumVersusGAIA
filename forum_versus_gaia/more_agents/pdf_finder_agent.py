@@ -261,11 +261,20 @@ def remove_tried_urls_in_markdown(prompt_context: str, tried_urls: set[str]) -> 
     return prompt_context
 
 
+ALREADY_CHECKED_PDFS: set[str] = set()  # TODO TODO TODO Oleksandr: this is a super temporary solution !!!
+
+
 async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
     """
     Extract snippets from a PDF document that are relevant to the user's request. If pdf_text is a wrong PDF
     document or does not contain any useful information then ContentMismatchError is raised.
     """
+    if pdf_text in ALREADY_CHECKED_PDFS:
+        print("tokens\033[0m")
+        # just return this as if it's a "relevant snippet", as we probably already have relevant snippet(s)
+        return "-"
+    ALREADY_CHECKED_PDFS.add(pdf_text)
+
     pdf_msgs = [
         {
             "content": (
