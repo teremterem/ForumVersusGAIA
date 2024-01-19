@@ -124,7 +124,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
 
         if "application/pdf" in httpx_response.headers["content-type"]:
             # pdf was found! returning its text
-            print("\n\033[90m📗 READING PDF FROM:", query_or_url, "\033[0m")
+            print("\n\033[90m📗 READING PDF FROM:", query_or_url, end="")
 
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
@@ -277,7 +277,7 @@ async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
         },
     ]
     pdf_token_num = num_tokens_from_messages(pdf_msgs)
-    print(pdf_token_num, "tokens")
+    print(" -", pdf_token_num, "tokens\033[0m")
 
     if pdf_token_num > PDF_MAX_TOKENS:
         return await apartition_pdf_and_extract_snippets(pdf_text=pdf_text, user_request=user_request)
