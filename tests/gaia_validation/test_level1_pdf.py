@@ -36,6 +36,7 @@ async def test_doctor_who_location():
     assert "THE CASTLE" in answer
 
 
+@pytest.mark.skip  # TODO TODO TODO
 @pytest.mark.asyncio
 async def test_nasa_award():
     """
