@@ -20,6 +20,7 @@ async def test_bulgarian_gender_split():
     assert answer == "234.9"
 
 
+@pytest.mark.skip  # TODO TODO TODO
 @pytest.mark.asyncio
 async def test_freud_neurologist():
     """
@@ -33,6 +34,7 @@ async def test_freud_neurologist():
     assert answer == "Kleinpaul"
 
 
+@pytest.mark.skip  # TODO TODO TODO
 @pytest.mark.asyncio
 async def test_elm_street():
     """

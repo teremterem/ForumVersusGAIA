@@ -124,7 +124,9 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
 
         if "application/pdf" in httpx_response.headers["content-type"]:
             # pdf was found! returning its text
-            print("\n\033[90m📗 READING PDF FROM:", query_or_url, "\033[0m")
+            # TODO TODO TODO Oleksandr: introduce the concept of user_proxy_agent to send all these service messages
+            #  to that agent instead of just printing them directly to the console
+            print("\n\033[90m📗 READING PDF FROM:", query_or_url, end="", flush=True)
 
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
@@ -261,11 +263,20 @@ def remove_tried_urls_in_markdown(prompt_context: str, tried_urls: set[str]) -> 
     return prompt_context
 
 
+ALREADY_CHECKED_PDFS: set[str] = set()  # TODO TODO TODO Oleksandr: this is a super temporary solution !!!
+
+
 async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
     """
     Extract snippets from a PDF document that are relevant to the user's request. If pdf_text is a wrong PDF
     document or does not contain any useful information then ContentMismatchError is raised.
     """
+    if pdf_text in ALREADY_CHECKED_PDFS:
+        print(" - ALREADY SEEN\033[0m")
+        # just return this as if it's a "relevant snippet", as we probably already have relevant snippet(s)
+        return "-"
+    ALREADY_CHECKED_PDFS.add(pdf_text)
+
     pdf_msgs = [
         {
             "content": (
@@ -277,7 +288,7 @@ async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
         },
     ]
     pdf_token_num = num_tokens_from_messages(pdf_msgs)
-    print(pdf_token_num, "tokens")
+    print(" -", pdf_token_num, "tokens\033[0m")
 
     if pdf_token_num > PDF_MAX_TOKENS:
         return await apartition_pdf_and_extract_snippets(pdf_text=pdf_text, user_request=user_request)
@@ -336,10 +347,11 @@ async def apartition_pdf_and_extract_snippets(pdf_text: str, user_request: str) 
     If pdf_text is a wrong PDF document or does not contain any useful information then ContentMismatchError is
     raised.
     """
-    pdf_metadata = await agenerate_metadata_from_pdf_parts(pdf_text=pdf_text, user_request=user_request)
-    # TODO Oleksandr
+    # TODO TODO TODO Oleksandr
     print("ERROR: PDF partitioning is not implemented yet")
-    raise NotImplementedError
+    raise ContentMismatchError
+    pdf_metadata = await agenerate_metadata_from_pdf_parts(pdf_text=pdf_text, user_request=user_request)
+    # TODO TODO TODO Oleksandr
     return pdf_metadata  # pylint: disable=unreachable
 
 

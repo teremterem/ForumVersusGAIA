@@ -15,10 +15,8 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     A general AI assistant that can answer questions that require research.
     """
     accumulated_context = []
-    for research_idx in range(MAX_NUM_OF_RESEARCHES):
-        if research_idx > 0:
-            ctx.respond("DOING MORE RESEARCH...")
 
+    for research_idx in range(MAX_NUM_OF_RESEARCHES):
         if accumulated_context:
             context_str = "\n\n".join([msg.content for msg in accumulated_context])
             context_msgs = pdf_finder_agent.quick_call(
@@ -94,22 +92,25 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
                 "role": "system",
             },
         ]
-        option_msg = fast_gpt_completion(prompt=prompt, pl_tags=["CHECK_ANSWER"])
-        for char in await option_msg.amaterialize_content():
-            if char.isdigit():
-                if char == "1":
-                    return  # the question was answered
-                break  # the question was not answered
+        if research_idx < MAX_NUM_OF_RESEARCHES - 1:
+            # this is not the last attempt at research yet
+            is_answered_msg = fast_gpt_completion(prompt=prompt, pl_tags=["CHECK_ANSWER"])
+            for char in await is_answered_msg.amaterialize_content():
+                if char.isdigit():
+                    if char == "1":
+                        return  # the question was answered
+                    break  # the question was not answered
+            ctx.respond("DOING MORE RESEARCH...")
 
 
 async def arun_assistant(question: str) -> str:
     """Run the assistant. Return the final answer in upper case."""
-    print("\n\nQUESTION:", question)
+    print("\n\n\033[36;1mQUESTION:", question, "\033[0m")
 
     assistant_responses = gaia_agent.quick_call(question, stream=True)
 
     async for response in assistant_responses:
-        print("\n\033[36;1mGPT: ", end="", flush=True)
+        print("\n\033[92;1m", end="", flush=True)
         async for token in response:
             print(token.text, end="", flush=True)
         print("\033[0m")
