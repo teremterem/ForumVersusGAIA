@@ -124,6 +124,8 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
 
         if "application/pdf" in httpx_response.headers["content-type"]:
             # pdf was found! returning its text
+            # TODO TODO TODO Oleksandr: introduce the concept of user_proxy_agent to send all these service messages
+            #  to that agent instead of just printing them directly to the console
             print("\n\033[90m📗 READING PDF FROM:", query_or_url, end="", flush=True)
 
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
