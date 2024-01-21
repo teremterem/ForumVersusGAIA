@@ -18,6 +18,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
 
     for research_idx in range(MAX_NUM_OF_RESEARCHES):
         if accumulated_context:
+            # TODO TODO TODO Oleksandr: here something that "expands" message sequence could have been used
             context_str = "\n\n".join([msg.content for msg in accumulated_context])
             context_msgs = pdf_finder_agent.quick_call(
                 [
@@ -55,7 +56,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
                 "content": "HERE GOES THE QUESTION:",
                 "role": "system",
             },
-            *await ctx.request_messages.amaterialize_as_list(),
+            ctx.request_messages,
         ]
         answer_msg = slow_gpt_completion(prompt=prompt, pl_tags=["FINISH"], **kwargs)
         ctx.respond(answer_msg)
