@@ -4,6 +4,8 @@
 #
 #    pip-compile --strip-extras
 #
+agentforum==0.0.6
+    # via -r requirements.in
 aiohttp==3.9.1
     # via
     #   langchain
@@ -120,6 +122,7 @@ pycparser==2.21
     # via cffi
 pydantic==2.5.3
     # via
+    #   agentforum
     #   langchain
     #   langchain-core
     #   langsmith
