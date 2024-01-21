@@ -1,8 +1,8 @@
 -c requirements.txt
 black==23.12.1
 ipython==8.20.0
-jupyterlab==4.0.10
-notebook==7.0.6  # this is needed for notebooks to work in PyCharm
+jupyterlab==4.0.11
+notebook==7.0.7  # this is needed for notebooks to work in PyCharm
 pip-tools==7.3.0
 pre-commit==3.6.0
 pylint==3.0.3
