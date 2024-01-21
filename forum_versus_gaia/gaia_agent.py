@@ -18,7 +18,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
 
     for research_idx in range(MAX_NUM_OF_RESEARCHES):
         if accumulated_context:
-            # TODO TODO TODO Oleksandr: here something that "expands" message sequence could have been used
+            # TODO Oleksandr: here something that "expands" message sequence could have been used
             context_str = "\n\n".join([msg.content for msg in accumulated_context])
             context_msgs = pdf_finder_agent.quick_call(
                 [
