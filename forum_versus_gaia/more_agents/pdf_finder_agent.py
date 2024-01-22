@@ -8,16 +8,16 @@ import secrets
 from typing import Optional
 
 import pypdf
+from agentforum.ext.llms.openai import anum_tokens_from_messages
 from agentforum.forum import InteractionContext, USER_ALIAS
+from agentforum.utils import arender_conversation
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion
 from forum_versus_gaia.utils import (
-    render_conversation,
     get_serpapi_results,
     get_httpx_client,
     is_valid_url,
     convert_html_to_markdown,
-    num_tokens_from_messages,
     ContentMismatchError,
 )
 
@@ -51,7 +51,7 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
             "role": "system",
         },
         {
-            "content": render_conversation(await ctx.request_messages.amaterialize_as_list()),
+            "content": await arender_conversation(ctx.request_messages),
             "role": "user",
         },
         {
@@ -126,7 +126,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
             # pdf was found! returning its text
             # TODO Oleksandr: introduce the concept of user_proxy_agent to send all these service messages
             #  to that agent instead of just printing them directly to the console
-            print("\n\033[90m📗 READING PDF FROM:", query_or_url, end="", flush=True)
+            print(f"\n\033[90m📗 READING PDF FROM: {query_or_url}", end="", flush=True)
 
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
@@ -162,7 +162,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
             )
             return
 
-        print("\n\033[90m🔗 NAVIGATING TO:", query_or_url, "\033[0m")
+        print(f"\n\033[90m🔗 NAVIGATING TO: {query_or_url}\033[0m")
 
         prompt_header_template = (
             "Your name is {AGENT_ALIAS}. You will be provided with the content of a web page that was found via "
@@ -174,7 +174,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
         prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
 
     else:
-        print("\n\033[90m🔍 LOOKING FOR PDF:", query_or_url, "\033[0m")
+        print(f"\n\033[90m🔍 LOOKING FOR PDF: {query_or_url}\033[0m")
 
         organic_results = get_serpapi_results(query_or_url)
         organic_results = [result for result in organic_results if result["link"].strip() not in already_tried_urls]
@@ -287,8 +287,8 @@ async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
             "role": "user",
         },
     ]
-    pdf_token_num = num_tokens_from_messages(pdf_msgs)
-    print(" -", pdf_token_num, "tokens\033[0m")
+    pdf_token_num = await anum_tokens_from_messages(pdf_msgs)
+    print(f" - {pdf_token_num} tokens\033[0m")
 
     if pdf_token_num > PDF_MAX_TOKENS:
         return await apartition_pdf_and_extract_snippets(pdf_text=pdf_text, user_request=user_request)
@@ -417,7 +417,8 @@ async def render_user_utterances(ctx: InteractionContext) -> str:
     """
     Render user utterances as a string.
     """
-    return render_conversation(
-        await ctx.request_messages.amaterialize_full_history(),
+    return await arender_conversation(
+        # TODO TODO TODO Oleksandr: introduce a method that returns full history as an AsyncMessageSequence
+        await ctx.request_messages.aget_full_history(),
         alias_resolver=lambda msg: msg.sender_alias if msg.sender_alias == USER_ALIAS else None,
     )
