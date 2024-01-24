@@ -250,7 +250,7 @@ async def acollect_tried_urls(ctx: InteractionContext) -> set[str]:
     return {
         msg.content.strip()
         for msg in await ctx.request_messages.amaterialize_full_history()
-        if msg.sender_alias == ctx.this_agent.alias and is_valid_url(msg.content.strip())
+        if msg.original_sender_alias == ctx.this_agent.alias and is_valid_url(msg.content.strip())
     }
 
 
@@ -420,5 +420,5 @@ async def render_user_utterances(ctx: InteractionContext) -> str:
     return await arender_conversation(
         # TODO TODO TODO Oleksandr: introduce a method that returns full history as an AsyncMessageSequence
         await ctx.request_messages.aget_full_history(),
-        alias_resolver=lambda msg: msg.sender_alias if msg.sender_alias == USER_ALIAS else None,
+        alias_resolver=lambda msg: msg.original_sender_alias if msg.original_sender_alias == USER_ALIAS else None,
     )
