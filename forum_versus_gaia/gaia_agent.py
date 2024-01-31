@@ -1,6 +1,7 @@
 """
 Try out a question from the GAIA dataset.
 """
+
 from agentforum.forum import InteractionContext
 from agentforum.utils import amaterialize_message_sequence
 
@@ -29,7 +30,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
                 ]
             )
         else:
-            context_msgs = pdf_finder_agent.quick_call(ctx.request_messages)
+            context_msgs = pdf_finder_agent.ask(ctx.request_messages)
 
         accumulated_context.extend(await context_msgs.amaterialize_as_list())
         # TODO TODO TODO Oleksandr: change to
@@ -113,7 +114,7 @@ async def arun_assistant(question: str) -> str:
     """Run the assistant. Return the final answer in upper case."""
     print(f"\n\n\033[33;1mQUESTION: {question}\033[0m")
 
-    assistant_responses = gaia_agent.quick_call(question, stream=True)
+    assistant_responses = gaia_agent.ask(question, stream=True)
 
     async for response in assistant_responses:
         print("\n\033[92;1m", end="", flush=True)

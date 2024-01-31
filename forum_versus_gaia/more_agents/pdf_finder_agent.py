@@ -1,10 +1,9 @@
 """
 This module contains an agent that finds PDF documents on the internet.
 """
-import asyncio
+
 import io
 import json
-import secrets
 from typing import Optional
 
 import pypdf
@@ -28,20 +27,14 @@ PDF_MAX_TOKENS = 100000
 PDF_CHAR_WINDOW = 10000
 PDF_CHAR_OVERLAP = 1000
 
-RESPONSES: dict[str, asyncio.Queue] = {}
-
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None, failure: bool = False) -> None:
+async def pdf_finder_agent(ctx: InteractionContext) -> None:
     """
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
     a webpage.
     """
-    if beacon is not None:
-        RESPONSES.pop(beacon).put_nowait((ctx.request_messages, failure))
-        return
-
     prompt = [
         {
             "content": (
@@ -82,20 +75,19 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
 
         responses = ctx.request_messages  # this is just for convenience - it will be overwritten later
         for _ in range(MAX_RETRIES):
-            beacon = secrets.token_hex(4)
-            RESPONSES[beacon] = asyncio.Queue()
-
-            pdf_browsing_agent.quick_call(
+            responses = pdf_browsing_agent.ask(
                 query,
-                beacon=beacon,
                 # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a
                 #  message id or even a message sequence (but not your own list of messages ?)
                 branch_from=await responses.aget_concluding_msg_promise(),
             )
-
-            responses, failure = await RESPONSES[beacon].get()
-            if not failure:
-                break
+            # pylint: disable=broad-except
+            # noinspection PyBroadException
+            try:
+                await responses.araise_if_error()
+                break  # no errors - we can stop retrying
+            except Exception:
+                pass
 
         ctx.respond(responses)
 
@@ -350,6 +342,7 @@ async def apartition_pdf_and_extract_snippets(pdf_text: str, user_request: str) 
     # TODO TODO TODO Oleksandr
     print("ERROR: PDF partitioning is not implemented yet")
     raise ContentMismatchError
+    # pylint: disable=unreachable
     pdf_metadata = await agenerate_metadata_from_pdf_parts(pdf_text=pdf_text, user_request=user_request)
     # TODO TODO TODO Oleksandr
     return pdf_metadata  # pylint: disable=unreachable
