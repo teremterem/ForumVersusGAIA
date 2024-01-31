@@ -1,6 +1,7 @@
 """
 Utilities for the ForumVersusGaia project.
 """
+
 import math
 import os
 from functools import lru_cache
@@ -37,6 +38,12 @@ class ContentMismatchError(ForumVersusGaiaError):
     """
 
 
+class ContentNotFoundError(ForumVersusGaiaError):
+    """
+    Raised when it was not possible to find the content that the user's request was about.
+    """
+
+
 class TooManyStepsError(ForumVersusGaiaError):
     """
     Raised when an agent takes too many steps to complete.
@@ -54,12 +61,12 @@ def is_valid_url(text: str) -> bool:
         return False
 
 
-def assert_valid_url(url: str) -> None:
+def assert_valid_url(url: str, error_class: type[BaseException] = NotAUrlError) -> None:
     """
     Raises an exception if the given URL is not valid.
     """
     if not is_valid_url(url):
-        raise NotAUrlError(url)
+        raise error_class(url)
 
 
 def get_httpx_client() -> httpx.AsyncClient:

@@ -4,7 +4,6 @@ This module contains an agent that finds PDF documents on the internet.
 
 import io
 import json
-from typing import Optional
 
 import pypdf
 from agentforum.ext.llms.openai import anum_tokens_from_messages
@@ -18,6 +17,8 @@ from forum_versus_gaia.utils import (
     is_valid_url,
     convert_html_to_markdown,
     ContentMismatchError,
+    assert_valid_url,
+    ContentNotFoundError,
 )
 
 MAX_RETRIES = 3
@@ -93,19 +94,12 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
 
 
 @forum.agent(alias="BROWSING_AGENT")
-async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon: Optional[str] = None) -> None:
+async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) -> None:
     """
     Navigates the web to find a PDF document that satisfies the user's request.
     """
     if depth <= 0:
-        # TODO Oleksandr: should be an exception
-        pdf_finder_agent.quick_call(
-            "I couldn't find a PDF document within a reasonable number of steps.",
-            beacon=beacon,
-            failure=True,
-            branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-        )
-        return
+        raise ContentNotFoundError("I couldn't find a PDF document within a reasonable number of steps.")
 
     query_or_url = await ctx.request_messages.amaterialize_concluding_content()
     already_tried_urls = await acollect_tried_urls(ctx)
@@ -123,36 +117,15 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
 
-            try:
-                pdf_snippets = await aextract_pdf_snippets(
-                    pdf_text=pdf_text, user_request=await render_user_utterances(ctx)
-                )
-            except ContentMismatchError:
-                # TODO Oleksandr: should be an exception (and move inside aextract_pdf_snippets)
-                pdf_finder_agent.quick_call(
-                    "This PDF document does not contain any relevant information.",
-                    beacon=beacon,
-                    failure=True,
-                    branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-                )
-                return
-
-            pdf_finder_agent.quick_call(
-                pdf_snippets,
-                beacon=beacon,
-                branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+            pdf_snippets = await aextract_pdf_snippets(
+                pdf_text=pdf_text, user_request=await render_user_utterances(ctx)
             )
-            return
+            ctx.get_asker_context().respond(pdf_snippets)
 
         if "text/html" not in httpx_response.headers["content-type"]:
-            # TODO Oleksandr: should be an exception
-            pdf_finder_agent.quick_call(
-                f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead.",
-                beacon=beacon,
-                failure=True,
-                branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+            raise ContentMismatchError(
+                f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead."
             )
-            return
 
         print(f"\n\033[90m🔗 NAVIGATING TO: {query_or_url}\033[0m")
 
@@ -186,20 +159,10 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
         pl_tags=[f"d{depth}"],
     )
 
-    if not is_valid_url(page_url):
-        # TODO Oleksandr: should be an exception (use assert_valid_url instead of is_valid_url)
-        pdf_finder_agent.quick_call(
-            page_url,
-            beacon=beacon,
-            failure=True,
-            branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-        )
-        return
-
+    assert_valid_url(page_url, error_class=ContentNotFoundError)
     pdf_browsing_agent.quick_call(
         page_url,
         depth=depth - 1,
-        beacon=beacon,
         branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
     )
 
@@ -329,7 +292,7 @@ async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
     ).amaterialize_content()
     answer = answer.strip()
     if answer.upper() == "MISMATCH":
-        raise ContentMismatchError
+        raise ContentMismatchError("This PDF document does not contain any relevant information.")
     return answer
 
 
@@ -339,13 +302,11 @@ async def apartition_pdf_and_extract_snippets(pdf_text: str, user_request: str) 
     If pdf_text is a wrong PDF document or does not contain any useful information then ContentMismatchError is
     raised.
     """
-    # TODO TODO TODO Oleksandr
-    print("ERROR: PDF partitioning is not implemented yet")
-    raise ContentMismatchError
+    raise NotImplementedError("PDF partitioning is not implemented yet")
     # pylint: disable=unreachable
     pdf_metadata = await agenerate_metadata_from_pdf_parts(pdf_text=pdf_text, user_request=user_request)
     # TODO TODO TODO Oleksandr
-    return pdf_metadata  # pylint: disable=unreachable
+    return pdf_metadata
 
 
 async def agenerate_metadata_from_pdf_parts(pdf_text: str, user_request: str) -> str:
@@ -402,7 +363,7 @@ async def agenerate_metadata_from_pdf_parts(pdf_text: str, user_request: str) ->
     ).amaterialize_content()
     answer = answer.strip()
     if answer.endswith("\nMISMATCH"):
-        raise ContentMismatchError
+        raise ContentMismatchError("This PDF document does not seem to be relevant.")
     return answer
 
 
