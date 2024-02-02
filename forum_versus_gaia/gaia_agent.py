@@ -1,7 +1,11 @@
 """
 Try out a question from the GAIA dataset.
 """
+
+import logging
+
 from agentforum.forum import InteractionContext
+from agentforum.utils import amaterialize_message_sequence
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion, fast_gpt_completion
 from forum_versus_gaia.more_agents.pdf_finder_agent import pdf_finder_agent
@@ -18,18 +22,22 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
 
     for research_idx in range(MAX_NUM_OF_RESEARCHES):
         if accumulated_context:
-            # TODO TODO TODO Oleksandr: here something that "expands" message sequence could have been used
-            context_str = "\n\n".join([msg.content for msg in accumulated_context])
-            context_msgs = pdf_finder_agent.quick_call(
+            context_str = "\n\n".join(
+                [msg.content for msg in await amaterialize_message_sequence(accumulated_context)]
+            )
+            context_msgs = pdf_finder_agent.ask(
                 [
                     ctx.request_messages,
                     f"Information that was found so far (no need to look for it again):\n\n{context_str}",
                 ]
             )
         else:
-            context_msgs = pdf_finder_agent.quick_call(ctx.request_messages)
+            context_msgs = pdf_finder_agent.ask(ctx.request_messages)
 
         accumulated_context.extend(await context_msgs.amaterialize_as_list())
+        # TODO TODO TODO Oleksandr: change to
+        #   accumulated_context.append(context_msgs)
+        #  after the concept of @forum.user_agent is introduced
 
         prompt = [
             {
@@ -51,7 +59,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
                 "content": "In order to answer the question use the following info:",
                 "role": "system",
             },
-            *accumulated_context,
+            accumulated_context,
             {
                 "content": "HERE GOES THE QUESTION:",
                 "role": "system",
@@ -69,7 +77,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
                 ),
                 "role": "system",
             },
-            *await ctx.request_messages.amaterialize_as_list(),
+            ctx.request_messages,
             {
                 "content": "And here is the answer:",
                 "role": "system",
@@ -106,9 +114,12 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
 
 async def arun_assistant(question: str) -> str:
     """Run the assistant. Return the final answer in upper case."""
-    print("\n\n\033[33;1mQUESTION:", question, "\033[0m")
+    logger = logging.getLogger("agentforum")
+    logger.setLevel(logging.DEBUG)
 
-    assistant_responses = gaia_agent.quick_call(question, stream=True)
+    print(f"\n\n\033[33;1mQUESTION: {question}\033[0m")
+
+    assistant_responses = gaia_agent.ask(question, stream=True)
 
     async for response in assistant_responses:
         print("\n\033[92;1m", end="", flush=True)

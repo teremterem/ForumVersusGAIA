@@ -1,24 +1,24 @@
 """
 This module contains an agent that finds PDF documents on the internet.
 """
-import asyncio
+
 import io
 import json
-import secrets
-from typing import Optional
 
 import pypdf
+from agentforum.ext.llms.openai import anum_tokens_from_messages
 from agentforum.forum import InteractionContext, USER_ALIAS
+from agentforum.utils import arender_conversation
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion
 from forum_versus_gaia.utils import (
-    render_conversation,
     get_serpapi_results,
     get_httpx_client,
     is_valid_url,
     convert_html_to_markdown,
-    num_tokens_from_messages,
     ContentMismatchError,
+    assert_valid_url,
+    ContentNotFoundError,
 )
 
 MAX_RETRIES = 3
@@ -28,20 +28,14 @@ PDF_MAX_TOKENS = 100000
 PDF_CHAR_WINDOW = 10000
 PDF_CHAR_OVERLAP = 1000
 
-RESPONSES: dict[str, asyncio.Queue] = {}
-
 
 @forum.agent
-async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None, failure: bool = False) -> None:
+async def pdf_finder_agent(ctx: InteractionContext) -> None:
     """
     Much like a search engine but finds and returns from the internet PDFs that satisfy a search query. Useful when
     the information needed to answer a question is more likely to be found in some kind of PDF document rather than
     a webpage.
     """
-    if beacon is not None:
-        RESPONSES.pop(beacon).put_nowait((ctx.request_messages, failure))
-        return
-
     prompt = [
         {
             "content": (
@@ -51,7 +45,7 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
             "role": "system",
         },
         {
-            "content": render_conversation(await ctx.request_messages.amaterialize_as_list()),
+            "content": await arender_conversation(ctx.request_messages),
             "role": "user",
         },
         {
@@ -82,38 +76,30 @@ async def pdf_finder_agent(ctx: InteractionContext, beacon: Optional[str] = None
 
         responses = ctx.request_messages  # this is just for convenience - it will be overwritten later
         for _ in range(MAX_RETRIES):
-            beacon = secrets.token_hex(4)
-            RESPONSES[beacon] = asyncio.Queue()
-
-            pdf_browsing_agent.quick_call(
+            responses = pdf_browsing_agent.ask(
                 query,
-                beacon=beacon,
                 # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a
                 #  message id or even a message sequence (but not your own list of messages ?)
                 branch_from=await responses.aget_concluding_msg_promise(),
             )
-
-            responses, failure = await RESPONSES[beacon].get()
-            if not failure:
-                break
+            # pylint: disable=broad-except
+            # noinspection PyBroadException
+            try:
+                await responses.araise_if_error()
+                break  # no errors - we can stop retrying
+            except Exception:
+                pass
 
         ctx.respond(responses)
 
 
 @forum.agent(alias="BROWSING_AGENT")
-async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, beacon: Optional[str] = None) -> None:
+async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) -> None:
     """
     Navigates the web to find a PDF document that satisfies the user's request.
     """
     if depth <= 0:
-        # TODO Oleksandr: should be an exception
-        pdf_finder_agent.quick_call(
-            "I couldn't find a PDF document within a reasonable number of steps.",
-            beacon=beacon,
-            failure=True,
-            branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-        )
-        return
+        raise ContentNotFoundError("I couldn't find a PDF document within a reasonable number of steps.")
 
     query_or_url = await ctx.request_messages.amaterialize_concluding_content()
     already_tried_urls = await acollect_tried_urls(ctx)
@@ -124,45 +110,25 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
 
         if "application/pdf" in httpx_response.headers["content-type"]:
             # pdf was found! returning its text
-            # TODO TODO TODO Oleksandr: introduce the concept of user_proxy_agent to send all these service messages
+            # TODO Oleksandr: introduce the concept of user_proxy_agent to send all these service messages
             #  to that agent instead of just printing them directly to the console
-            print("\n\033[90m📗 READING PDF FROM:", query_or_url, end="", flush=True)
+            print(f"\n\033[90m📗 READING PDF FROM: {query_or_url}", end="", flush=True)
 
             pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
             pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
 
-            try:
-                pdf_snippets = await aextract_pdf_snippets(
-                    pdf_text=pdf_text, user_request=await render_user_utterances(ctx)
-                )
-            except ContentMismatchError:
-                # TODO Oleksandr: should be an exception (and move inside aextract_pdf_snippets)
-                pdf_finder_agent.quick_call(
-                    "This PDF document does not contain any relevant information.",
-                    beacon=beacon,
-                    failure=True,
-                    branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-                )
-                return
-
-            pdf_finder_agent.quick_call(
-                pdf_snippets,
-                beacon=beacon,
-                branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+            pdf_snippets = await aextract_pdf_snippets(
+                pdf_text=pdf_text, user_request=await render_user_utterances(ctx)
             )
+            ctx.respond(pdf_snippets)
             return
 
         if "text/html" not in httpx_response.headers["content-type"]:
-            # TODO Oleksandr: should be an exception
-            pdf_finder_agent.quick_call(
-                f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead.",
-                beacon=beacon,
-                failure=True,
-                branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+            raise ContentMismatchError(
+                f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead."
             )
-            return
 
-        print("\n\033[90m🔗 NAVIGATING TO:", query_or_url, "\033[0m")
+        print(f"\n\033[90m🔗 NAVIGATING TO: {query_or_url}\033[0m")
 
         prompt_header_template = (
             "Your name is {AGENT_ALIAS}. You will be provided with the content of a web page that was found via "
@@ -174,7 +140,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
         prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
 
     else:
-        print("\n\033[90m🔍 LOOKING FOR PDF:", query_or_url, "\033[0m")
+        print(f"\n\033[90m🔍 LOOKING FOR PDF: {query_or_url}\033[0m")
 
         organic_results = get_serpapi_results(query_or_url)
         organic_results = [result for result in organic_results if result["link"].strip() not in already_tried_urls]
@@ -194,20 +160,10 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH, be
         pl_tags=[f"d{depth}"],
     )
 
-    if not is_valid_url(page_url):
-        # TODO Oleksandr: should be an exception (use assert_valid_url instead of is_valid_url)
-        pdf_finder_agent.quick_call(
-            page_url,
-            beacon=beacon,
-            failure=True,
-            branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
-        )
-        return
-
-    pdf_browsing_agent.quick_call(
+    assert_valid_url(page_url, error_class=ContentNotFoundError)
+    pdf_browsing_agent.tell(
         page_url,
         depth=depth - 1,
-        beacon=beacon,
         branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
     )
 
@@ -250,7 +206,7 @@ async def acollect_tried_urls(ctx: InteractionContext) -> set[str]:
     return {
         msg.content.strip()
         for msg in await ctx.request_messages.amaterialize_full_history()
-        if msg.sender_alias == ctx.this_agent.alias and is_valid_url(msg.content.strip())
+        if msg.original_sender_alias == ctx.this_agent.alias and is_valid_url(msg.content.strip())
     }
 
 
@@ -287,8 +243,8 @@ async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
             "role": "user",
         },
     ]
-    pdf_token_num = num_tokens_from_messages(pdf_msgs)
-    print(" -", pdf_token_num, "tokens\033[0m")
+    pdf_token_num = await anum_tokens_from_messages(pdf_msgs)
+    print(f" - {pdf_token_num} tokens\033[0m")
 
     if pdf_token_num > PDF_MAX_TOKENS:
         return await apartition_pdf_and_extract_snippets(pdf_text=pdf_text, user_request=user_request)
@@ -337,7 +293,7 @@ async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
     ).amaterialize_content()
     answer = answer.strip()
     if answer.upper() == "MISMATCH":
-        raise ContentMismatchError
+        raise ContentMismatchError("This PDF document does not contain any relevant information.")
     return answer
 
 
@@ -347,12 +303,11 @@ async def apartition_pdf_and_extract_snippets(pdf_text: str, user_request: str) 
     If pdf_text is a wrong PDF document or does not contain any useful information then ContentMismatchError is
     raised.
     """
-    # TODO TODO TODO Oleksandr
-    print("ERROR: PDF partitioning is not implemented yet")
-    raise ContentMismatchError
+    raise NotImplementedError("PDF partitioning is not implemented yet")
+    # pylint: disable=unreachable
     pdf_metadata = await agenerate_metadata_from_pdf_parts(pdf_text=pdf_text, user_request=user_request)
     # TODO TODO TODO Oleksandr
-    return pdf_metadata  # pylint: disable=unreachable
+    return pdf_metadata
 
 
 async def agenerate_metadata_from_pdf_parts(pdf_text: str, user_request: str) -> str:
@@ -409,7 +364,7 @@ async def agenerate_metadata_from_pdf_parts(pdf_text: str, user_request: str) ->
     ).amaterialize_content()
     answer = answer.strip()
     if answer.endswith("\nMISMATCH"):
-        raise ContentMismatchError
+        raise ContentMismatchError("This PDF document does not seem to be relevant.")
     return answer
 
 
@@ -417,7 +372,8 @@ async def render_user_utterances(ctx: InteractionContext) -> str:
     """
     Render user utterances as a string.
     """
-    return render_conversation(
-        await ctx.request_messages.amaterialize_full_history(),
-        alias_resolver=lambda msg: msg.sender_alias if msg.sender_alias == USER_ALIAS else None,
+    return await arender_conversation(
+        # TODO TODO TODO Oleksandr: introduce a method that returns full history as an AsyncMessageSequence
+        await ctx.request_messages.aget_full_history(),
+        alias_resolver=lambda msg: msg.original_sender_alias if msg.original_sender_alias == USER_ALIAS else None,
     )

@@ -1,18 +1,17 @@
 """
 Utilities for the ForumVersusGaia project.
 """
+
 import math
 import os
 from functools import lru_cache
-from typing import Any, Callable
-from typing import Iterable
+from typing import Any
 from urllib.parse import urlparse
 
 import html2text
 import httpx
 import numpy as np
-import tiktoken
-from agentforum.models import Message, Freeform
+from agentforum.models import Freeform
 from serpapi import GoogleSearch
 
 from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS
@@ -39,30 +38,16 @@ class ContentMismatchError(ForumVersusGaiaError):
     """
 
 
+class ContentNotFoundError(ForumVersusGaiaError):
+    """
+    Raised when it was not possible to find the content that the user's request was about.
+    """
+
+
 class TooManyStepsError(ForumVersusGaiaError):
     """
     Raised when an agent takes too many steps to complete.
     """
-
-
-def render_conversation(
-    conversation: Iterable[Message],
-    alias_resolver: str | Callable[[Message], str | None] = lambda msg: msg.sender_alias,
-    alias_delimiter: str = ": ",
-    turn_delimiter: str = "\n\n",
-) -> str:
-    """
-    Render a conversation as a string. Whenever alias_resolver returns None for a message, that message is skipped.
-    """
-    # TODO Oleksandr: make this function part of the framework
-    hardcoded_alias = alias_resolver if isinstance(alias_resolver, str) else None
-    turns = []
-    for msg in conversation:
-        alias = hardcoded_alias or alias_resolver(msg)
-        if alias is None:
-            continue
-        turns.append(f"{alias}{alias_delimiter}{msg.content.strip()}")
-    return turn_delimiter.join(turns)
 
 
 def is_valid_url(text: str) -> bool:
@@ -76,12 +61,12 @@ def is_valid_url(text: str) -> bool:
         return False
 
 
-def assert_valid_url(url: str) -> None:
+def assert_valid_url(url: str, error_class: type[BaseException] = NotAUrlError) -> None:
     """
     Raises an exception if the given URL is not valid.
     """
     if not is_valid_url(url):
-        raise NotAUrlError(url)
+        raise error_class(url)
 
 
 def get_httpx_client() -> httpx.AsyncClient:
@@ -163,30 +148,3 @@ def find_min_probability(openai_metadata: Freeform) -> float:
     min_log_prob = min(log_probs)
     min_probability = math.exp(min_log_prob)
     return min_probability
-
-
-def num_tokens_from_messages(messages: Iterable[dict[str, str]], model: str = "gpt-3.5-turbo-0613") -> int:
-    """
-    Returns the number of tokens used by a list of messages.
-    """
-    try:
-        encoding = tiktoken.encoding_for_model(model)
-    except KeyError:
-        encoding = tiktoken.get_encoding("cl100k_base")
-
-    if model == "gpt-3.5-turbo-0613":  # note: future models may deviate from this
-        num_tokens = 0
-        for message in messages:
-            num_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
-            for key, value in message.items():
-                num_tokens += len(encoding.encode(value))
-                if key == "name":  # if there's a name, the role is omitted
-                    num_tokens += -1  # role is always required and always 1 token
-        num_tokens += 2  # every reply is primed with <im_start>assistant
-        return num_tokens
-
-    raise NotImplementedError(
-        f"num_tokens_from_messages() is not presently implemented for model {model}.\n"
-        "See https://github.com/openai/openai-python/blob/main/chatml.md for information on how messages are "
-        "converted to tokens."
-    )
