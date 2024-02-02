@@ -2,6 +2,8 @@
 Try out a question from the GAIA dataset.
 """
 
+import logging
+
 from agentforum.forum import InteractionContext
 from agentforum.utils import amaterialize_message_sequence
 
@@ -23,7 +25,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             context_str = "\n\n".join(
                 [msg.content for msg in await amaterialize_message_sequence(accumulated_context)]
             )
-            context_msgs = pdf_finder_agent.quick_call(
+            context_msgs = pdf_finder_agent.ask(
                 [
                     ctx.request_messages,
                     f"Information that was found so far (no need to look for it again):\n\n{context_str}",
@@ -112,6 +114,9 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
 
 async def arun_assistant(question: str) -> str:
     """Run the assistant. Return the final answer in upper case."""
+    logger = logging.getLogger("agentforum")
+    logger.setLevel(logging.DEBUG)
+
     print(f"\n\n\033[33;1mQUESTION: {question}\033[0m")
 
     assistant_responses = gaia_agent.ask(question, stream=True)

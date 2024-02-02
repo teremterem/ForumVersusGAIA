@@ -120,7 +120,8 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
             pdf_snippets = await aextract_pdf_snippets(
                 pdf_text=pdf_text, user_request=await render_user_utterances(ctx)
             )
-            ctx.get_asker_context().respond(pdf_snippets)
+            ctx.respond(pdf_snippets)
+            return
 
         if "text/html" not in httpx_response.headers["content-type"]:
             raise ContentMismatchError(
@@ -160,7 +161,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
     )
 
     assert_valid_url(page_url, error_class=ContentNotFoundError)
-    pdf_browsing_agent.quick_call(
+    pdf_browsing_agent.tell(
         page_url,
         depth=depth - 1,
         branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
