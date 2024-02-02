@@ -4,6 +4,8 @@
 #
 #    pip-compile --strip-extras
 #
+agentforum==0.0.8
+    # via -r requirements.in
 aiohttp==3.9.3
     # via
     #   langchain
@@ -19,7 +21,7 @@ anyio==4.2.0
     #   openai
 attrs==23.2.0
     # via aiohttp
-certifi==2023.11.17
+certifi==2024.2.2
     # via
     #   httpcore
     #   httpx
@@ -32,7 +34,7 @@ charset-normalizer==3.3.2
     #   requests
 cryptography==42.0.2
     # via pdfminer-six
-dataclasses-json==0.6.3
+dataclasses-json==0.6.4
     # via
     #   langchain
     #   langchain-community
@@ -68,24 +70,24 @@ jsonpatch==1.33
     #   langchain-core
 jsonpointer==2.4
     # via jsonpatch
-langchain==0.1.4
+langchain==0.1.5
     # via -r requirements.in
-langchain-community==0.0.16
+langchain-community==0.0.17
     # via langchain
-langchain-core==0.1.17
+langchain-core==0.1.18
     # via
     #   langchain
     #   langchain-community
 langchainhub==0.1.14
     # via -r requirements.in
-langsmith==0.0.85
+langsmith==0.0.86
     # via
     #   langchain
     #   langchain-community
     #   langchain-core
 marshmallow==3.20.2
     # via dataclasses-json
-multidict==6.0.4
+multidict==6.0.5
     # via
     #   aiohttp
     #   yarl
@@ -114,12 +116,13 @@ pillow==10.2.0
     # via pdfplumber
 pluggy==1.4.0
     # via pytest
-promptlayer==0.4.4
+promptlayer==0.4.5
     # via -r requirements.in
 pycparser==2.21
     # via cffi
 pydantic==2.6.0
     # via
+    #   agentforum
     #   langchain
     #   langchain-core
     #   langsmith

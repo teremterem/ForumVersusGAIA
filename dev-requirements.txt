@@ -37,7 +37,7 @@ bleach==6.1.0
     # via nbconvert
 build==1.0.3
     # via pip-tools
-certifi==2023.11.17
+certifi==2024.2.2
     # via
     #   -c requirements.txt
     #   requests
@@ -85,7 +85,7 @@ idna==3.6
     #   requests
 ipykernel==6.29.0
     # via jupyterlab
-ipython==8.20.0
+ipython==8.21.0
     # via
     #   -r dev-requirements.in
     #   ipykernel
@@ -151,7 +151,7 @@ jupyterlab-server==2.25.2
     # via
     #   jupyterlab
     #   notebook
-markupsafe==2.1.4
+markupsafe==2.1.5
     # via
     #   jinja2
     #   nbconvert
