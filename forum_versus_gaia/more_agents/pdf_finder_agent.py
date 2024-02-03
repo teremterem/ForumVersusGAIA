@@ -8,6 +8,7 @@ import json
 import pypdf
 from agentforum.ext.llms.openai import anum_tokens_from_messages
 from agentforum.forum import InteractionContext, USER_ALIAS
+from agentforum.models import Message
 from agentforum.utils import arender_conversation
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion
@@ -82,13 +83,8 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
                 #  message id or even a message sequence (but not your own list of messages ?)
                 branch_from=await responses.aget_concluding_msg_promise(),
             )
-            # pylint: disable=broad-except
-            # noinspection PyBroadException
-            try:
-                await responses.araise_if_error()
-                break  # no errors - we can stop retrying
-            except Exception:
-                pass
+            if not await responses.acontains_errors():
+                break
 
         ctx.respond(responses)
 
@@ -162,7 +158,10 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
 
     assert_valid_url(page_url, error_class=ContentNotFoundError)
     pdf_browsing_agent.tell(
-        page_url,
+        Message(
+            content_template="{page_url}",
+            page_url=page_url,
+        ),
         depth=depth - 1,
         branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
     )
