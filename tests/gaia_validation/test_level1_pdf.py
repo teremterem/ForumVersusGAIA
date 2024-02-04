@@ -1,6 +1,7 @@
 """
 GAIA validation set. Level 1 samples that involve finding and reading PDF files.
 """
+
 import pytest
 
 from forum_versus_gaia.gaia_agent import arun_assistant
@@ -36,7 +37,6 @@ async def test_doctor_who_location():
     assert "THE CASTLE" in answer
 
 
-@pytest.mark.skip  # TODO TODO TODO
 @pytest.mark.asyncio
 async def test_nasa_award():
     """

@@ -21,6 +21,7 @@ from forum_versus_gaia.utils import (
     assert_valid_url,
     ContentNotFoundError,
     ForumVersusGaiaError,
+    TooManyStepsError,
 )
 
 MAX_RETRIES = 3
@@ -96,7 +97,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
     Navigates the web to find a PDF document that satisfies the user's request.
     """
     if depth <= 0:
-        raise ContentNotFoundError("I couldn't find a PDF document within a reasonable number of steps.")
+        raise TooManyStepsError("I couldn't find a PDF document within a reasonable number of steps.")
 
     query_or_url = await ctx.request_messages.amaterialize_concluding_content()
     already_tried_urls = await acollect_tried_urls(ctx)
