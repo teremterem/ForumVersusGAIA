@@ -2,12 +2,21 @@
 Try out a question from the GAIA dataset.
 """
 
+import asyncio
+import hashlib
 import logging
+from pprint import pprint
 
 from agentforum.forum import InteractionContext
 from agentforum.utils import amaterialize_message_sequence
 
-from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion, fast_gpt_completion
+from forum_versus_gaia.forum_versus_gaia_config import (
+    forum,
+    slow_gpt_completion,
+    fast_gpt_completion,
+    CAPTURING_TASKS,
+    CAPTURED_PROMPTS,
+)
 from forum_versus_gaia.more_agents.pdf_finder_agent import pdf_finder_agent
 
 MAX_NUM_OF_RESEARCHES = 2
@@ -130,4 +139,11 @@ async def arun_assistant(question: str) -> str:
 
     final_answer = await assistant_responses.amaterialize_concluding_content()
     final_answer = final_answer.split("FINAL ANSWER:")[1].strip()
+
+    filename = f"_{hashlib.sha256(question.encode()).hexdigest()[:8]}.py"
+    await asyncio.gather(*CAPTURING_TASKS)
+    with open(filename, "w", encoding="utf-8") as file:
+        file.write("CAPTURED = ")
+        pprint(CAPTURED_PROMPTS, stream=file, width=110, sort_dicts=False)
+
     return final_answer

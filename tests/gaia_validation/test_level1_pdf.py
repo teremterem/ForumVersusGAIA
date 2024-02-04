@@ -2,12 +2,8 @@
 GAIA validation set. Level 1 samples that involve finding and reading PDF files.
 """
 
-import asyncio
-from pprint import pprint
-
 import pytest
 
-from forum_versus_gaia.forum_versus_gaia_config import CAPTURED_PROMPTS, CAPTURING_TASKS
 from forum_versus_gaia.gaia_agent import arun_assistant
 
 
@@ -39,11 +35,6 @@ async def test_doctor_who_location():
     # which results in the answer sometimes containing not only "THE CASTLE" but other words as well - no point in
     # trying to fix this.
     assert "THE CASTLE" in answer
-
-    await asyncio.gather(*CAPTURING_TASKS)
-    with open("captured.py", "w", encoding="utf-8") as file:
-        file.write("CAPTURED = ")
-        pprint(CAPTURED_PROMPTS, stream=file, width=110, sort_dicts=False)
 
 
 @pytest.mark.asyncio
