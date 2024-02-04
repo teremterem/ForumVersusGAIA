@@ -20,6 +20,7 @@ from forum_versus_gaia.utils import (
     ContentMismatchError,
     assert_valid_url,
     ContentNotFoundError,
+    ForumVersusGaiaError,
 )
 
 MAX_RETRIES = 3
@@ -116,7 +117,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
             pdf_snippets = await aextract_pdf_snippets(
                 pdf_text=pdf_text, user_request=await render_user_utterances(ctx)
             )
-            ctx.respond(pdf_snippets)
+            ctx.respond(pdf_snippets, pdf=pdf_text)
             return
 
         if "text/html" not in httpx_response.headers["content-type"]:
@@ -292,7 +293,7 @@ async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
     ).amaterialize_content()
     answer = answer.strip()
     if answer.upper() == "MISMATCH":
-        raise ContentMismatchError("This PDF document does not contain any relevant information.")
+        raise ContentMismatchError("This PDF document does not contain any relevant information.", pdf=pdf_text)
     return answer
 
 
@@ -302,7 +303,7 @@ async def apartition_pdf_and_extract_snippets(pdf_text: str, user_request: str) 
     If pdf_text is a wrong PDF document or does not contain any useful information then ContentMismatchError is
     raised.
     """
-    raise NotImplementedError("PDF partitioning is not implemented yet")
+    raise ForumVersusGaiaError("PDF partitioning is not implemented yet", pdf=pdf_text)
     # pylint: disable=unreachable
     pdf_metadata = await agenerate_metadata_from_pdf_parts(pdf_text=pdf_text, user_request=user_request)
     # TODO TODO TODO Oleksandr

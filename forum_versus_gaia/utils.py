@@ -11,13 +11,14 @@ from urllib.parse import urlparse
 import html2text
 import httpx
 import numpy as np
+from agentforum.errors import FormattedForumError
 from agentforum.models import Freeform
 from serpapi import GoogleSearch
 
 from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS
 
 
-class ForumVersusGaiaError(Exception):
+class ForumVersusGaiaError(FormattedForumError):
     """
     Base class for all exceptions in the ForumVersusGaia project.
     """
