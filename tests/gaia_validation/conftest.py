@@ -9,7 +9,7 @@ from functools import partial
 from glob import glob
 from pathlib import Path
 from typing import Any, Optional, Iterable
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 from agentforum.ext.llms.openai import _message_to_openai_dict, _OpenAIStreamedMessage
@@ -48,32 +48,40 @@ async def _make_patched_openai_request(
         if stream:
             tokens = re.split(r"(?<=\S)(?=\s+)", response["content"])
             for token in tokens:
-                token_producer.send(
-                    {
-                        "choices": [
-                            {
-                                "delta": {
-                                    "content": token,
-                                    "role": response["openai_role"],
-                                }
-                            }
-                        ]
-                    }
-                )
-        else:
-            # send the whole response as a single "token"
-            token_producer.send(
-                {
+                data = MagicMock()
+                data.choices[0].delta.content = token
+                data.choices[0].delta.role = response["openai_role"]
+                data.choices[0].message.content = token
+                data.choices[0].message.role = response["openai_role"]
+                data.model_dump.return_value = {
                     "choices": [
                         {
-                            "message": {
-                                "content": response["content"],
+                            "delta": {
+                                "content": token,
                                 "role": response["openai_role"],
                             }
                         }
                     ]
                 }
-            )
+                token_producer.send(data)
+        else:
+            # send the whole response as a single "token"
+            data = MagicMock()
+            data.choices[0].delta.content = response["content"]
+            data.choices[0].delta.role = response["openai_role"]
+            data.choices[0].message.content = response["content"]
+            data.choices[0].message.role = response["openai_role"]
+            data.model_dump.return_value = {
+                "choices": [
+                    {
+                        "message": {
+                            "content": response["content"],
+                            "role": response["openai_role"],
+                        }
+                    }
+                ]
+            }
+            token_producer.send(data)
 
 
 def _convert_prompt_to_captured_key(prompt: Iterable[dict[str, Any]]) -> tuple[tuple[tuple[str, Any], ...], ...]:
@@ -97,4 +105,5 @@ def _load_captured_openai_responses() -> dict[tuple[tuple[tuple[str, Any], ...],
         for prompt_response in module.CAPTURED:
             prompt_key = _convert_prompt_to_captured_key(prompt_response["prompt"])
             captured_responses[prompt_key] = prompt_response["response"]
+
     return captured_responses
