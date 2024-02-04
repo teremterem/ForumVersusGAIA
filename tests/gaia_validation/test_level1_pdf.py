@@ -41,7 +41,8 @@ async def test_doctor_who_location():
     assert "THE CASTLE" in answer
 
     await asyncio.gather(*CAPTURING_TASKS)
-    with open("captured_prompts.py", "w", encoding="utf-8") as file:
+    with open("captured.py", "w", encoding="utf-8") as file:
+        file.write("CAPTURED = ")
         pprint(CAPTURED_PROMPTS, stream=file, width=110, sort_dicts=False)
 
 
