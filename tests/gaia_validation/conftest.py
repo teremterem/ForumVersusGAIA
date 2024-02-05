@@ -95,7 +95,7 @@ def _load_captured_openai_responses() -> dict[tuple[tuple[tuple[str, Any], ...],
     """
     Load the captured OpenAI responses from the captured_prompts directory.
     """
-    captured_responses_dir = Path("../captured_prompts")
+    captured_responses_dir = Path("../gaia_mocking_data")
     sys.path.append(str(captured_responses_dir))
 
     captured_responses = {}
