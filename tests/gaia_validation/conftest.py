@@ -18,6 +18,7 @@ from agentforum.typing import MessageType
 from agentforum.utils import amaterialize_message_sequence
 
 from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS
+from forum_versus_gaia.utils import ContentMismatchError
 
 
 @pytest.fixture(autouse=True)
@@ -34,6 +35,10 @@ def patch_openai() -> None:
         patch(
             "forum_versus_gaia.utils.get_serpapi_results",
             side_effect=partial(_get_serpapi_results_mock, mocking_data["serpapi"]),
+        ),
+        patch(
+            "forum_versus_gaia.utils.adownload_from_web",
+            side_effect=partial(_adownload_from_web_mock, mocking_data["web"]),
         ),
     ):
         yield
@@ -101,6 +106,20 @@ def _get_serpapi_results_mock(
     return copy.deepcopy(captured_responses[(query, remove_gaia_links)])
 
 
+async def _adownload_from_web_mock(captured_responses: dict[str, tuple[str, str]], url: str) -> tuple[str, bool]:
+    content_type, content = captured_responses[url]
+    if "application/pdf" in content_type:
+        return content, True
+
+    if "text/html" not in content_type:
+        raise ContentMismatchError(
+            f"Expected a PDF or HTML document but got {content_type} instead.",
+            page_url=url,
+        )
+
+    return content, False
+
+
 def _convert_prompt_to_captured_key(prompt: Iterable[dict[str, Any]]) -> tuple[tuple[tuple[str, Any], ...], ...]:
     """
     Convert the prompt to a key for the captured response dictionary.
@@ -126,5 +145,7 @@ def _load_gaia_mocking_data() -> dict[str, Any]:
         for serpapi_response in module.CAPTURED["serpapi"]:
             serpapi_key = (serpapi_response["query"], serpapi_response["remove_gaia_links"])
             mocking_data["serpapi"][serpapi_key] = serpapi_response["organic_results"]
+        for web_response in module.CAPTURED["web"]:
+            mocking_data["web"][web_response["url"]] = (web_response["content_type"], web_response["content"])
 
     return mocking_data
