@@ -15,7 +15,7 @@ from agentforum.errors import FormattedForumError
 from agentforum.models import Freeform
 from serpapi import GoogleSearch
 
-from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS
+from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS, CAPTURED_DATA
 
 
 class ForumVersusGaiaError(FormattedForumError):
@@ -94,7 +94,7 @@ def get_serpapi_results(query: str, remove_gaia_links: bool = REMOVE_GAIA_LINKS)
     """
     Returns a list of organic results from SerpAPI for a given query.
     """
-    # TODO Oleksandr: make this function async by replacing SerpAPI python client with plain aiohttp
+    # TODO Oleksandr: make this function async by replacing SerpAPI python client with plain aiohttp ?
     search = GoogleSearch(
         {
             "q": query,
@@ -109,6 +109,13 @@ def get_serpapi_results(query: str, remove_gaia_links: bool = REMOVE_GAIA_LINKS)
             for organic_result in organic_results
             if "gaia-benchmark" not in organic_result["link"].lower() and "2311.12983" not in organic_result["link"]
         ]
+    CAPTURED_DATA["serpapi"].append(
+        {
+            "query": query,
+            "remove_gaia_links": remove_gaia_links,
+            "organic_results": organic_results,
+        }
+    )
     return organic_results
 
 

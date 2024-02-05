@@ -17,7 +17,7 @@ from agentforum.typing import MessageType
 from agentforum.utils import amaterialize_message_sequence
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture  # (autouse=True)
 def patch_openai() -> None:
     """
     Patch the OpenAI API calls to use captured responses.
@@ -102,7 +102,7 @@ def _load_captured_openai_responses() -> dict[tuple[tuple[tuple[str, Any], ...],
     module_files = glob("*.py", root_dir=captured_responses_dir)
     for module_file in module_files:
         module = importlib.import_module(module_file[:-3])
-        for prompt_response in module.CAPTURED:
+        for prompt_response in module.CAPTURED["openai"]:
             prompt_key = _convert_prompt_to_captured_key(prompt_response["prompt"])
             captured_responses[prompt_key] = prompt_response["response"]
 
