@@ -17,7 +17,8 @@ from agentforum.errors import FormattedForumError
 from agentforum.models import Freeform
 from serpapi import GoogleSearch
 
-from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS, CAPTURED_DATA
+from forum_versus_gaia import forum_versus_gaia_config
+from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS
 
 
 class ForumVersusGaiaError(FormattedForumError):
@@ -111,7 +112,7 @@ def get_serpapi_results(query: str, remove_gaia_links: bool = REMOVE_GAIA_LINKS)
             for organic_result in organic_results
             if "gaia-benchmark" not in organic_result["link"].lower() and "2311.12983" not in organic_result["link"]
         ]
-    CAPTURED_DATA["serpapi"].append(
+    forum_versus_gaia_config.CAPTURED_DATA["serpapi"].append(
         {
             "query": query,
             "remove_gaia_links": remove_gaia_links,
@@ -132,7 +133,7 @@ async def adownload_from_web(url: str) -> tuple[str, bool]:
     if "application/pdf" in httpx_response.headers["content-type"]:
         pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
         pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
-        CAPTURED_DATA["web"].append(
+        forum_versus_gaia_config.CAPTURED_DATA["web"].append(
             {
                 "url": url,
                 "content_type": httpx_response.headers["content-type"],
@@ -147,7 +148,7 @@ async def adownload_from_web(url: str) -> tuple[str, bool]:
             page_url=url,
         )
 
-    CAPTURED_DATA["web"].append(
+    forum_versus_gaia_config.CAPTURED_DATA["web"].append(
         {
             "url": url,
             "content_type": httpx_response.headers["content-type"],
