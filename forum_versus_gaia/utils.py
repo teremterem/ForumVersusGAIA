@@ -2,6 +2,7 @@
 Utilities for the ForumVersusGaia project.
 """
 
+import io
 import math
 import os
 from functools import lru_cache
@@ -11,6 +12,7 @@ from urllib.parse import urlparse
 import html2text
 import httpx
 import numpy as np
+import pypdf
 from agentforum.errors import FormattedForumError
 from agentforum.models import Freeform
 from serpapi import GoogleSearch
@@ -117,6 +119,42 @@ def get_serpapi_results(query: str, remove_gaia_links: bool = REMOVE_GAIA_LINKS)
         }
     )
     return organic_results
+
+
+async def adownload_from_web(url: str) -> tuple[str, bool]:
+    """
+    Download content from the web and return it as a string. If the content is a PDF, return the text extracted from the
+    PDF as well. Returns a tuple of the content and a boolean indicating whether the content is a PDF.
+    """
+    async with get_httpx_client() as httpx_client:
+        httpx_response = await httpx_client.get(url)
+
+    if "application/pdf" in httpx_response.headers["content-type"]:
+        pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
+        pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
+        CAPTURED_DATA["web"].append(
+            {
+                "url": url,
+                "content_type": httpx_response.headers["content-type"],
+                "content": pdf_text,
+            }
+        )
+        return pdf_text, True
+
+    if "text/html" not in httpx_response.headers["content-type"]:
+        raise ContentMismatchError(
+            f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead.",
+            page_url=url,
+        )
+
+    CAPTURED_DATA["web"].append(
+        {
+            "url": url,
+            "content_type": httpx_response.headers["content-type"],
+            "content": httpx_response.text,
+        }
+    )
+    return httpx_response.text, False
 
 
 def convert_html_to_markdown(html: str, baseurl: str = "") -> str:
