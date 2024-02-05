@@ -20,7 +20,7 @@ from agentforum.utils import amaterialize_message_sequence
 from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS
 
 
-@pytest.fixture  # (autouse=True)
+@pytest.fixture(autouse=True)
 def patch_openai() -> None:
     """
     Patch the OpenAI API calls to use captured responses.
