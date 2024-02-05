@@ -141,7 +141,11 @@ async def arun_assistant(question: str) -> str:
         file.write("CAPTURED = ")
         pprint(forum_versus_gaia_config.CAPTURED_DATA, stream=file, width=119, sort_dicts=False)
 
-    forum_versus_gaia_config.CAPTURED_DATA = []
+    forum_versus_gaia_config.CAPTURED_DATA = {
+        "openai": [],
+        "serpapi": [],
+        "web": [],
+    }
     forum_versus_gaia_config.CAPTURING_TASKS = []
 
     return final_answer
