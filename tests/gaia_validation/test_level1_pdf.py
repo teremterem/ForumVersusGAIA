@@ -1,10 +1,9 @@
+# pylint: disable=import-outside-toplevel
 """
 GAIA validation set. Level 1 samples that involve finding and reading PDF files.
 """
 
 import pytest
-
-from forum_versus_gaia.gaia_agent import arun_assistant
 
 
 @pytest.mark.asyncio
@@ -12,6 +11,8 @@ async def test_dragons_diet():
     """
     Test that the dragons diet question is answered correctly.
     """
+    from forum_versus_gaia.gaia_agent import arun_assistant
+
     question = (
         "What was the volume in m^3 of the fish bag that was calculated in the University of Leicester paper "
         '"Can Hiccup Supply Enough Fish to Maintain a Dragon’s Diet?"'
@@ -25,6 +26,8 @@ async def test_doctor_who_location():
     """
     Test that the Doctor Who location question is answered correctly.
     """
+    from forum_versus_gaia.gaia_agent import arun_assistant
+
     question = (
         "In Series 9, Episode 11 of Doctor Who, the Doctor is trapped inside an ever-shifting maze. What is this "
         "location called in the official script for the episode? Give the setting exactly as it appears in the "
@@ -42,6 +45,8 @@ async def test_nasa_award():
     """
     Test that the question about NASA award number for R. G. Arendt's work is answered correctly.
     """
+    from forum_versus_gaia.gaia_agent import arun_assistant
+
     question = (
         "On June 6, 2023, an article by Carolyn Collins Petersen was published in Universe Today. This article "
         "mentions a team that produced a paper about their observations, linked at the bottom of the article. "
@@ -57,6 +62,8 @@ async def test_bert_base_blocks():
     Test that the question about the number of blocks in BERT base encoder vs the encoder from the architecture
     proposed in Attention is All You Need is answered correctly.
     """
+    from forum_versus_gaia.gaia_agent import arun_assistant
+
     question = (
         "How many more blocks (also denoted as layers) in BERT base encoder than the encoder from the "
         "architecture proposed in Attention is All You Need?"
