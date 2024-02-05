@@ -2,6 +2,7 @@
 Pytest configuration with functions to mock calls to OpenAI.
 """
 
+import copy
 import importlib
 import re
 import sys
@@ -16,22 +17,30 @@ from agentforum.ext.llms.openai import _message_to_openai_dict, _OpenAIStreamedM
 from agentforum.typing import MessageType
 from agentforum.utils import amaterialize_message_sequence
 
+from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS
 
-@pytest.fixture  # (autouse=True)
+
+@pytest.fixture(autouse=True)
 def patch_openai() -> None:
     """
     Patch the OpenAI API calls to use captured responses.
     """
-    captured_responses = _load_captured_openai_responses()
-    with patch(
-        "agentforum.ext.llms.openai._make_openai_request",
-        side_effect=partial(_make_patched_openai_request, captured_responses),
+    mocking_data = _load_gaia_mocking_data()
+    with (
+        patch(
+            "agentforum.ext.llms.openai._make_openai_request",
+            side_effect=partial(_make_openai_request_mock, mocking_data["openai"]),
+        ),
+        patch(
+            "forum_versus_gaia.utils.get_serpapi_results",
+            side_effect=partial(_get_serpapi_results_mock, mocking_data["serpapi"]),
+        ),
     ):
         yield
 
 
 # noinspection PyProtectedMember,PyUnusedLocal
-async def _make_patched_openai_request(
+async def _make_openai_request_mock(
     captured_responses: dict[tuple[tuple[tuple[str, Any], ...], ...], dict[str, Any]],
     prompt: MessageType,
     streamed_message: _OpenAIStreamedMessage,
@@ -84,6 +93,14 @@ async def _make_patched_openai_request(
             token_producer.send(data)
 
 
+def _get_serpapi_results_mock(
+    captured_responses: dict[tuple[str, bool], list[dict[str, Any]]],
+    query: str,
+    remove_gaia_links: bool = REMOVE_GAIA_LINKS,
+) -> list[dict[str, Any]]:
+    return copy.deepcopy(captured_responses[(query, remove_gaia_links)])
+
+
 def _convert_prompt_to_captured_key(prompt: Iterable[dict[str, Any]]) -> tuple[tuple[tuple[str, Any], ...], ...]:
     """
     Convert the prompt to a key for the captured response dictionary.
@@ -91,19 +108,23 @@ def _convert_prompt_to_captured_key(prompt: Iterable[dict[str, Any]]) -> tuple[t
     return tuple(tuple(sorted(d.items())) for d in prompt)
 
 
-def _load_captured_openai_responses() -> dict[tuple[tuple[tuple[str, Any], ...], ...], dict[str, Any]]:
-    """
-    Load the captured OpenAI responses from the captured_prompts directory.
-    """
-    captured_responses_dir = Path("../gaia_mocking_data")
-    sys.path.append(str(captured_responses_dir))
+def _load_gaia_mocking_data() -> dict[str, Any]:
+    mocking_data_dir = Path("../gaia_mocking_data")
+    sys.path.append(str(mocking_data_dir))
 
-    captured_responses = {}
-    module_files = glob("*.py", root_dir=captured_responses_dir)
+    mocking_data = {
+        "openai": {},
+        "serpapi": {},
+        "web": {},
+    }
+    module_files = glob("*.py", root_dir=mocking_data_dir)
     for module_file in module_files:
         module = importlib.import_module(module_file[:-3])
-        for prompt_response in module.CAPTURED["openai"]:
-            prompt_key = _convert_prompt_to_captured_key(prompt_response["prompt"])
-            captured_responses[prompt_key] = prompt_response["response"]
+        for openai_response in module.CAPTURED["openai"]:
+            prompt_key = _convert_prompt_to_captured_key(openai_response["prompt"])
+            mocking_data["openai"][prompt_key] = openai_response["response"]
+        for serpapi_response in module.CAPTURED["serpapi"]:
+            serpapi_key = (serpapi_response["query"], serpapi_response["remove_gaia_links"])
+            mocking_data["serpapi"][serpapi_key] = serpapi_response["organic_results"]
 
-    return captured_responses
+    return mocking_data
