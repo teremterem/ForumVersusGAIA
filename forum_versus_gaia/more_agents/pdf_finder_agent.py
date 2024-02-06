@@ -2,23 +2,24 @@
 This module contains an agent that finds PDF documents on the internet.
 """
 
-import io
 import json
 
-import pypdf
 from agentforum.ext.llms.openai import anum_tokens_from_messages
 from agentforum.forum import InteractionContext, USER_ALIAS
+from agentforum.models import Message
 from agentforum.utils import arender_conversation
 
 from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion
 from forum_versus_gaia.utils import (
     get_serpapi_results,
-    get_httpx_client,
     is_valid_url,
     convert_html_to_markdown,
     ContentMismatchError,
     assert_valid_url,
     ContentNotFoundError,
+    ForumVersusGaiaError,
+    TooManyStepsError,
+    adownload_from_web,
 )
 
 MAX_RETRIES = 3
@@ -82,13 +83,8 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
                 #  message id or even a message sequence (but not your own list of messages ?)
                 branch_from=await responses.aget_concluding_msg_promise(),
             )
-            # pylint: disable=broad-except
-            # noinspection PyBroadException
-            try:
-                await responses.araise_if_error()
-                break  # no errors - we can stop retrying
-            except Exception:
-                pass
+            if not await responses.acontains_errors():
+                break
 
         ctx.respond(responses)
 
@@ -99,34 +95,25 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
     Navigates the web to find a PDF document that satisfies the user's request.
     """
     if depth <= 0:
-        raise ContentNotFoundError("I couldn't find a PDF document within a reasonable number of steps.")
+        raise TooManyStepsError("I couldn't find a PDF document within a reasonable number of steps.")
 
     query_or_url = await ctx.request_messages.amaterialize_concluding_content()
     already_tried_urls = await acollect_tried_urls(ctx)
 
-    if is_valid_url(query_or_url):
-        async with get_httpx_client() as httpx_client:
-            httpx_response = await httpx_client.get(query_or_url)
+    if is_valid_url(query_or_url):  # TODO TODO TODO Oleksandr: just check for page_url in message metadata ?
+        web_content, is_pdf = await adownload_from_web(query_or_url)
 
-        if "application/pdf" in httpx_response.headers["content-type"]:
+        if is_pdf:
             # pdf was found! returning its text
             # TODO Oleksandr: introduce the concept of user_proxy_agent to send all these service messages
             #  to that agent instead of just printing them directly to the console
             print(f"\n\033[90m📗 READING PDF FROM: {query_or_url}", end="", flush=True)
 
-            pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
-            pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
-
             pdf_snippets = await aextract_pdf_snippets(
-                pdf_text=pdf_text, user_request=await render_user_utterances(ctx)
+                pdf_text=web_content, user_request=await render_user_utterances(ctx)
             )
-            ctx.respond(pdf_snippets)
+            ctx.respond(pdf_snippets, pdf=web_content)
             return
-
-        if "text/html" not in httpx_response.headers["content-type"]:
-            raise ContentMismatchError(
-                f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead."
-            )
 
         print(f"\n\033[90m🔗 NAVIGATING TO: {query_or_url}\033[0m")
 
@@ -136,7 +123,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
             "from this web page a URL that, in your opinion, is the most likely to lead to the PDF document the "
             "user is looking for."
         )
-        prompt_context = convert_html_to_markdown(httpx_response.text, baseurl=query_or_url)
+        prompt_context = convert_html_to_markdown(web_content, baseurl=query_or_url)
         prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
 
     else:
@@ -162,7 +149,10 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
 
     assert_valid_url(page_url, error_class=ContentNotFoundError)
     pdf_browsing_agent.tell(
-        page_url,
+        Message(
+            content_template="{page_url}",
+            page_url=page_url,
+        ),
         depth=depth - 1,
         branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
     )
@@ -293,7 +283,7 @@ async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
     ).amaterialize_content()
     answer = answer.strip()
     if answer.upper() == "MISMATCH":
-        raise ContentMismatchError("This PDF document does not contain any relevant information.")
+        raise ContentMismatchError("This PDF document does not contain any relevant information.", pdf=pdf_text)
     return answer
 
 
@@ -303,7 +293,7 @@ async def apartition_pdf_and_extract_snippets(pdf_text: str, user_request: str) 
     If pdf_text is a wrong PDF document or does not contain any useful information then ContentMismatchError is
     raised.
     """
-    raise NotImplementedError("PDF partitioning is not implemented yet")
+    raise ForumVersusGaiaError("PDF partitioning is not implemented yet", pdf=pdf_text)
     # pylint: disable=unreachable
     pdf_metadata = await agenerate_metadata_from_pdf_parts(pdf_text=pdf_text, user_request=user_request)
     # TODO TODO TODO Oleksandr
