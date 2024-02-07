@@ -220,7 +220,7 @@ async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
     if pdf_text in ALREADY_CHECKED_PDFS:
         print(" - ALREADY SEEN\033[0m")
         # just return this as if it's a "relevant snippet", as we probably already have relevant snippet(s)
-        return "-"
+        return "-"  # TODO TODO TODO Oleksandr: throw some "benign" error here instead ?
     ALREADY_CHECKED_PDFS.add(pdf_text)
 
     pdf_msgs = [
