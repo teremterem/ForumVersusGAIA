@@ -51,7 +51,7 @@ if CAPTURE_MOCKING_DATA:
             message_dicts = [_message_to_openai_dict(msg) for msg in await amaterialize_message_sequence(prompt)]
             response_dict = {
                 "content": await result.amaterialize_content(),
-                **(await result.amaterialize_metadata()).as_dict,
+                **(await result.amaterialize_metadata()).as_dict(),
             }
             CAPTURED_DATA["openai"].append(
                 {
