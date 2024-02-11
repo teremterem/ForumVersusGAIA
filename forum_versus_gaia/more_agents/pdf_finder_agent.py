@@ -77,12 +77,7 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
 
         responses = ctx.request_messages  # this is just for convenience - it will be overwritten later
         for _ in range(MAX_RETRIES):
-            responses = pdf_browsing_agent.ask(
-                query,
-                # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a
-                #  message id or even a message sequence (but not your own list of messages ?)
-                branch_from=await responses.aget_concluding_msg_promise(),
-            )
+            responses = pdf_browsing_agent.ask(query, branch_from=responses)
             if not await responses.acontains_errors():
                 break
 
@@ -154,7 +149,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
             page_url=page_url,
         ),
         depth=depth - 1,
-        branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
+        branch_from=ctx.request_messages,
     )
 
 

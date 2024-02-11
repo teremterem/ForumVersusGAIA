@@ -41,12 +41,12 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
                     # TODO TODO TODO Oleksandr: move this inside the pdf_finder_agent.ask() method ?
                     f"Information that was found so far (no need to look for it again):\n\n{context_str}",
                 ],
-                branch_from=await context_msgs.aget_concluding_msg_promise() if context_msgs else None,
+                branch_from=context_msgs,
             )
         else:
             context_msgs = pdf_finder_agent.ask(
                 ctx.request_messages,
-                branch_from=await context_msgs.aget_concluding_msg_promise() if context_msgs else None,
+                branch_from=context_msgs,
             )
 
         accumulated_context.extend(await context_msgs.amaterialize_as_list())
