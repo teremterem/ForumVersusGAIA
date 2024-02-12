@@ -149,7 +149,6 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
             page_url=page_url,
         ),
         depth=depth - 1,
-        branch_from=ctx.request_messages,
     )
 
 
