@@ -12,7 +12,6 @@ from agentforum.utils import arender_conversation
 from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion
 from forum_versus_gaia.utils import (
     get_serpapi_results,
-    is_valid_url,
     convert_html_to_markdown,
     ContentMismatchError,
     assert_valid_url,
@@ -72,10 +71,10 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
     ]
     queries = await slow_gpt_completion(prompt=prompt, pl_tags=["START"]).amaterialize_content()
 
+    responses = None
     for query in queries.split("Search Query:")[1:]:
         query = query.split("\n\n")[0].strip()
 
-        responses = ctx.request_messages  # this is just for convenience - it will be overwritten later
         for _ in range(MAX_RETRIES):
             responses = pdf_browsing_agent.ask(query, branch_from=responses)
             if not await responses.acontains_errors():
@@ -92,17 +91,22 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
     if depth <= 0:
         raise TooManyStepsError("I couldn't find a PDF document within a reasonable number of steps.")
 
-    query_or_url = await ctx.request_messages.amaterialize_concluding_content()
+    request = await ctx.request_messages.amaterialize_concluding_message()
     already_tried_urls = await acollect_tried_urls(ctx)
 
-    if is_valid_url(query_or_url):  # TODO TODO TODO Oleksandr: just check for page_url in message metadata ?
-        web_content, is_pdf = await adownload_from_web(query_or_url)
+    if hasattr(request, "page_url"):
+        web_content, is_pdf = await adownload_from_web(request.page_url)
 
         if is_pdf:
             # pdf was found! returning its text
             # TODO Oleksandr: introduce the concept of user_proxy_agent to send all these service messages
             #  to that agent instead of just printing them directly to the console
-            print(f"\n\033[90m📗 READING PDF FROM: {query_or_url}", end="", flush=True)
+            print(f"\n\033[90m📗 READING PDF FROM: {request.page_url}", end="", flush=True)
+
+            already_checked_pdfs = await acollect_checked_pdfs(ctx)
+            if web_content in already_checked_pdfs:
+                print(" - ALREADY SEEN\033[0m")
+                return
 
             pdf_snippets = await aextract_pdf_snippets(
                 pdf_text=web_content, user_request=await render_user_utterances(ctx)
@@ -110,7 +114,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
             ctx.respond(pdf_snippets, pdf=web_content)
             return
 
-        print(f"\n\033[90m🔗 NAVIGATING TO: {query_or_url}\033[0m")
+        print(f"\n\033[90m🔗 NAVIGATING TO: {request.page_url}\033[0m")
 
         prompt_header_template = (
             "Your name is {AGENT_ALIAS}. You will be provided with the content of a web page that was found via "
@@ -118,13 +122,13 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
             "from this web page a URL that, in your opinion, is the most likely to lead to the PDF document the "
             "user is looking for."
         )
-        prompt_context = convert_html_to_markdown(web_content, baseurl=query_or_url)
+        prompt_context = convert_html_to_markdown(web_content, baseurl=request.page_url)
         prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
 
     else:
-        print(f"\n\033[90m🔍 LOOKING FOR PDF: {query_or_url}\033[0m")
+        print(f"\n\033[90m🔍 LOOKING FOR PDF: {request.content}\033[0m")
 
-        organic_results = get_serpapi_results(query_or_url)
+        organic_results = get_serpapi_results(request.content)
         organic_results = [result for result in organic_results if result["link"].strip() not in already_tried_urls]
 
         prompt_header_template = (
@@ -187,11 +191,14 @@ async def acollect_tried_urls(ctx: InteractionContext) -> set[str]:
     """
     Collect URLs that were already tried by the agent.
     """
-    return {
-        msg.content.strip()
-        for msg in await ctx.request_messages.amaterialize_full_history()
-        if msg.original_sender_alias == ctx.this_agent.alias and is_valid_url(msg.content.strip())
-    }
+    return {msg.page_url for msg in await ctx.request_messages.amaterialize_full_history() if hasattr(msg, "page_url")}
+
+
+async def acollect_checked_pdfs(ctx: InteractionContext) -> set[str]:
+    """
+    Collect pdf texts that were already seen by the model.
+    """
+    return {msg.pdf for msg in await ctx.request_messages.amaterialize_full_history() if hasattr(msg, "pdf")}
 
 
 def remove_tried_urls_in_markdown(prompt_context: str, tried_urls: set[str]) -> str:
@@ -203,20 +210,11 @@ def remove_tried_urls_in_markdown(prompt_context: str, tried_urls: set[str]) -> 
     return prompt_context
 
 
-ALREADY_CHECKED_PDFS: set[str] = set()  # TODO TODO TODO Oleksandr: this is a super temporary solution !!!
-
-
 async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
     """
     Extract snippets from a PDF document that are relevant to the user's request. If pdf_text is a wrong PDF
     document or does not contain any useful information then ContentMismatchError is raised.
     """
-    if pdf_text in ALREADY_CHECKED_PDFS:
-        print(" - ALREADY SEEN\033[0m")
-        # just return this as if it's a "relevant snippet", as we probably already have relevant snippet(s)
-        return "-"  # TODO TODO TODO Oleksandr: throw some "benign" error here instead ?
-    ALREADY_CHECKED_PDFS.add(pdf_text)
-
     pdf_msgs = [
         {
             "content": (

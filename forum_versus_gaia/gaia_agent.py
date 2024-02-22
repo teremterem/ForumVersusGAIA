@@ -8,7 +8,7 @@ import logging
 from pprint import pprint
 
 from agentforum.forum import InteractionContext
-from agentforum.utils import amaterialize_message_sequence
+from agentforum.utils import amaterialize_message_sequence, NO_VALUE
 
 from forum_versus_gaia import forum_versus_gaia_config
 from forum_versus_gaia.forum_versus_gaia_config import (
@@ -29,7 +29,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     """
     accumulated_context = []
 
-    context_msgs = None
+    context_msgs = NO_VALUE
     for research_idx in range(MAX_NUM_OF_RESEARCHES):
         if accumulated_context:
             context_str = "\n\n".join(
