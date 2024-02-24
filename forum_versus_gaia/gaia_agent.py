@@ -2,12 +2,21 @@
 Try out a question from the GAIA dataset.
 """
 
+import asyncio
+import hashlib
 import logging
+from pprint import pprint
 
 from agentforum.forum import InteractionContext
-from agentforum.utils import amaterialize_message_sequence
+from agentforum.utils import amaterialize_message_sequence, NO_VALUE
 
-from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion, fast_gpt_completion
+from forum_versus_gaia import forum_versus_gaia_config
+from forum_versus_gaia.forum_versus_gaia_config import (
+    forum,
+    slow_gpt_completion,
+    fast_gpt_completion,
+    CAPTURE_MOCKING_DATA,
+)
 from forum_versus_gaia.more_agents.pdf_finder_agent import pdf_finder_agent
 
 MAX_NUM_OF_RESEARCHES = 2
@@ -20,6 +29,7 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
     """
     accumulated_context = []
 
+    context_msgs = NO_VALUE
     for research_idx in range(MAX_NUM_OF_RESEARCHES):
         if accumulated_context:
             context_str = "\n\n".join(
@@ -28,11 +38,16 @@ async def gaia_agent(ctx: InteractionContext, **kwargs) -> None:
             context_msgs = pdf_finder_agent.ask(
                 [
                     ctx.request_messages,
+                    # TODO TODO TODO Oleksandr: move this inside the pdf_finder_agent.ask() method ?
                     f"Information that was found so far (no need to look for it again):\n\n{context_str}",
-                ]
+                ],
+                branch_from=context_msgs,
             )
         else:
-            context_msgs = pdf_finder_agent.ask(ctx.request_messages)
+            context_msgs = pdf_finder_agent.ask(
+                ctx.request_messages,
+                branch_from=context_msgs,
+            )
 
         accumulated_context.extend(await context_msgs.amaterialize_as_list())
         # TODO TODO TODO Oleksandr: change to
@@ -130,4 +145,19 @@ async def arun_assistant(question: str) -> str:
 
     final_answer = await assistant_responses.amaterialize_concluding_content()
     final_answer = final_answer.split("FINAL ANSWER:")[1].strip()
+
+    if CAPTURE_MOCKING_DATA:
+        filename = f"_{hashlib.sha256(question.encode()).hexdigest()[:8]}.py"
+        await asyncio.gather(*forum_versus_gaia_config.CAPTURING_TASKS)
+        with open(filename, "w", encoding="utf-8") as file:
+            file.write("CAPTURED = ")
+            pprint(forum_versus_gaia_config.CAPTURED_DATA, stream=file, width=119, sort_dicts=False)
+
+        forum_versus_gaia_config.CAPTURED_DATA = {
+            "openai": [],
+            "serpapi": [],
+            "web": [],
+        }
+        forum_versus_gaia_config.CAPTURING_TASKS = []
+
     return final_answer

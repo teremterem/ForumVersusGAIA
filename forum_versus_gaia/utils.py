@@ -2,6 +2,7 @@
 Utilities for the ForumVersusGaia project.
 """
 
+import io
 import math
 import os
 from functools import lru_cache
@@ -11,13 +12,16 @@ from urllib.parse import urlparse
 import html2text
 import httpx
 import numpy as np
+import pypdf
+from agentforum.errors import FormattedForumError
 from agentforum.models import Freeform
 from serpapi import GoogleSearch
 
+from forum_versus_gaia import forum_versus_gaia_config
 from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS
 
 
-class ForumVersusGaiaError(Exception):
+class ForumVersusGaiaError(FormattedForumError):
     """
     Base class for all exceptions in the ForumVersusGaia project.
     """
@@ -41,6 +45,12 @@ class ContentMismatchError(ForumVersusGaiaError):
 class ContentNotFoundError(ForumVersusGaiaError):
     """
     Raised when it was not possible to find the content that the user's request was about.
+    """
+
+
+class ContentAlreadySeenError(ForumVersusGaiaError):
+    """
+    Raised when the content was already seen by the agent before.
     """
 
 
@@ -93,7 +103,7 @@ def get_serpapi_results(query: str, remove_gaia_links: bool = REMOVE_GAIA_LINKS)
     """
     Returns a list of organic results from SerpAPI for a given query.
     """
-    # TODO Oleksandr: make this function async by replacing SerpAPI python client with plain aiohttp
+    # TODO Oleksandr: make this function async by replacing SerpAPI python client with plain aiohttp ?
     search = GoogleSearch(
         {
             "q": query,
@@ -108,14 +118,60 @@ def get_serpapi_results(query: str, remove_gaia_links: bool = REMOVE_GAIA_LINKS)
             for organic_result in organic_results
             if "gaia-benchmark" not in organic_result["link"].lower() and "2311.12983" not in organic_result["link"]
         ]
+    if forum_versus_gaia_config.CAPTURE_MOCKING_DATA:
+        forum_versus_gaia_config.CAPTURED_DATA["serpapi"].append(
+            {
+                "query": query,
+                "remove_gaia_links": remove_gaia_links,
+                "organic_results": organic_results,
+            }
+        )
     return organic_results
+
+
+async def adownload_from_web(url: str) -> tuple[str, bool]:
+    """
+    Download content from the web and return it as a string. If the content is a PDF, return the text extracted from the
+    PDF as well. Returns a tuple of the content and a boolean indicating whether the content is a PDF.
+    """
+    async with get_httpx_client() as httpx_client:
+        httpx_response = await httpx_client.get(url)
+
+    if "application/pdf" in httpx_response.headers["content-type"]:
+        pdf_reader = pypdf.PdfReader(io.BytesIO(httpx_response.content))
+        pdf_text = "\n".join([page.extract_text() for page in pdf_reader.pages])
+        if forum_versus_gaia_config.CAPTURE_MOCKING_DATA:
+            forum_versus_gaia_config.CAPTURED_DATA["web"].append(
+                {
+                    "url": url,
+                    "content_type": httpx_response.headers["content-type"],
+                    "content": pdf_text,
+                }
+            )
+        return pdf_text, True
+
+    if "text/html" not in httpx_response.headers["content-type"]:
+        raise ContentMismatchError(
+            f"Expected a PDF or HTML document but got {httpx_response.headers['content-type']} instead.",
+            page_url=url,
+        )
+
+    if forum_versus_gaia_config.CAPTURE_MOCKING_DATA:
+        forum_versus_gaia_config.CAPTURED_DATA["web"].append(
+            {
+                "url": url,
+                "content_type": httpx_response.headers["content-type"],
+                "content": httpx_response.text,
+            }
+        )
+    return httpx_response.text, False
 
 
 def convert_html_to_markdown(html: str, baseurl: str = "") -> str:
     """
     Convert HTML to markdown (the best effort).
     """
-    h = html2text.HTML2Text(baseurl=baseurl)
+    h = html2text.HTML2Text(baseurl=baseurl, bodywidth=0)
     h.ignore_links = False
     return h.handle(html)
 
