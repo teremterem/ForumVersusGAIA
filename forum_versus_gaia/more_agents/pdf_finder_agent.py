@@ -19,6 +19,7 @@ from forum_versus_gaia.utils import (
     ForumVersusGaiaError,
     TooManyStepsError,
     adownload_from_web,
+    ContentAlreadySeenError,
 )
 
 MAX_RETRIES = 3
@@ -116,7 +117,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
             already_checked_pdfs = await acollect_checked_pdfs(ctx)
             if web_content in already_checked_pdfs:
                 print(" - ALREADY SEEN\033[0m")
-                return
+                raise ContentAlreadySeenError
 
             pdf_snippets = await aextract_pdf_snippets(
                 pdf_text=web_content, user_request=await render_user_utterances(ctx)
@@ -204,6 +205,10 @@ async def acollect_tried_urls(ctx: InteractionContext) -> set[str]:
     tried_urls = {
         msg.page_url for msg in await ctx.request_messages.amaterialize_full_history() if hasattr(msg, "page_url")
     }
+    # # try:
+    # #     tried_urls.remove("https://www.nsi.bg/census2011/PDOCS2/Census2011final_en.pdf")
+    # # except KeyError:
+    # #     pass
     # # tried_urls.add("https://muse.jhu.edu/book/24372")
     # print()
     # print()

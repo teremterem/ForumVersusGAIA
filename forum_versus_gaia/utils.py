@@ -48,6 +48,12 @@ class ContentNotFoundError(ForumVersusGaiaError):
     """
 
 
+class ContentAlreadySeenError(ForumVersusGaiaError):
+    """
+    Raised when the content was already seen by the agent before.
+    """
+
+
 class TooManyStepsError(ForumVersusGaiaError):
     """
     Raised when an agent takes too many steps to complete.
