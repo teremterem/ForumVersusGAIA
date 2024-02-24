@@ -204,6 +204,7 @@ async def acollect_tried_urls(ctx: InteractionContext) -> set[str]:
     tried_urls = {
         msg.page_url for msg in await ctx.request_messages.amaterialize_full_history() if hasattr(msg, "page_url")
     }
+    # # tried_urls.add("https://muse.jhu.edu/book/24372")
     # print()
     # print()
     # print()
