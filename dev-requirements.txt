@@ -4,11 +4,12 @@
 #
 #    pip-compile --strip-extras dev-requirements.in
 #
-anyio==4.2.0
+anyio==4.3.0
     # via
     #   -c requirements.txt
+    #   httpx
     #   jupyter-server
-appnope==0.1.3
+appnope==0.1.4
     # via ipykernel
 argon2-cffi==23.1.0
     # via jupyter-server
@@ -16,7 +17,7 @@ argon2-cffi-bindings==21.2.0
     # via argon2-cffi
 arrow==1.3.0
     # via isoduration
-astroid==3.0.2
+astroid==3.0.3
     # via pylint
 asttokens==2.4.1
     # via stack-data
@@ -24,14 +25,13 @@ async-lru==2.0.4
     # via jupyterlab
 attrs==23.2.0
     # via
-    #   -c requirements.txt
     #   jsonschema
     #   referencing
 babel==2.14.0
     # via jupyterlab-server
 beautifulsoup4==4.12.3
     # via nbconvert
-black==24.1.1
+black==24.2.0
     # via -r dev-requirements.in
 bleach==6.1.0
     # via nbconvert
@@ -40,11 +40,11 @@ build==1.0.3
 certifi==2024.2.2
     # via
     #   -c requirements.txt
+    #   httpcore
+    #   httpx
     #   requests
 cffi==1.16.0
-    # via
-    #   -c requirements.txt
-    #   argon2-cffi-bindings
+    # via argon2-cffi-bindings
 cfgv==3.4.0
     # via pre-commit
 charset-normalizer==3.3.2
@@ -57,7 +57,7 @@ click==8.1.7
     #   pip-tools
 comm==0.2.1
     # via ipykernel
-debugpy==1.8.0
+debugpy==1.8.1
     # via ipykernel
 decorator==5.1.1
     # via ipython
@@ -75,17 +75,30 @@ filelock==3.13.1
     # via virtualenv
 fqdn==1.5.1
     # via jsonschema
-identify==2.5.33
+h11==0.14.0
+    # via
+    #   -c requirements.txt
+    #   httpcore
+httpcore==1.0.4
+    # via
+    #   -c requirements.txt
+    #   httpx
+httpx==0.27.0
+    # via
+    #   -c requirements.txt
+    #   jupyterlab
+identify==2.5.35
     # via pre-commit
 idna==3.6
     # via
     #   -c requirements.txt
     #   anyio
+    #   httpx
     #   jsonschema
     #   requests
-ipykernel==6.29.0
+ipykernel==6.29.2
     # via jupyterlab
-ipython==8.21.0
+ipython==8.22.1
     # via
     #   -r dev-requirements.in
     #   ipykernel
@@ -101,12 +114,10 @@ jinja2==3.1.3
     #   jupyterlab
     #   jupyterlab-server
     #   nbconvert
-json5==0.9.14
+json5==0.9.17
     # via jupyterlab-server
 jsonpointer==2.4
-    # via
-    #   -c requirements.txt
-    #   jsonschema
+    # via jsonschema
 jsonschema==4.21.1
     # via
     #   jupyter-events
@@ -141,13 +152,13 @@ jupyter-server==2.12.5
     #   notebook-shim
 jupyter-server-terminals==0.5.2
     # via jupyter-server
-jupyterlab==4.0.12
+jupyterlab==4.1.2
     # via
     #   -r dev-requirements.in
     #   notebook
 jupyterlab-pygments==0.3.0
     # via nbconvert
-jupyterlab-server==2.25.2
+jupyterlab-server==2.25.3
     # via
     #   jupyterlab
     #   notebook
@@ -164,12 +175,10 @@ mccabe==0.7.0
 mistune==3.0.2
     # via nbconvert
 mypy-extensions==1.0.0
-    # via
-    #   -c requirements.txt
-    #   black
+    # via black
 nbclient==0.9.0
     # via nbconvert
-nbconvert==7.14.2
+nbconvert==7.16.1
     # via jupyter-server
 nbformat==5.9.2
     # via
@@ -180,9 +189,9 @@ nest-asyncio==1.6.0
     # via ipykernel
 nodeenv==1.8.0
     # via pre-commit
-notebook==7.0.7
+notebook==7.1.0
     # via -r dev-requirements.in
-notebook-shim==0.2.3
+notebook-shim==0.2.4
     # via
     #   jupyterlab
     #   notebook
@@ -206,7 +215,7 @@ pathspec==0.12.1
     # via black
 pexpect==4.9.0
     # via ipython
-pip-tools==7.3.0
+pip-tools==7.4.0
     # via -r dev-requirements.in
 platformdirs==4.2.0
     # via
@@ -214,9 +223,9 @@ platformdirs==4.2.0
     #   jupyter-core
     #   pylint
     #   virtualenv
-pre-commit==3.6.0
+pre-commit==3.6.2
     # via -r dev-requirements.in
-prometheus-client==0.19.0
+prometheus-client==0.20.0
     # via jupyter-server
 prompt-toolkit==3.0.43
     # via ipython
@@ -229,17 +238,17 @@ ptyprocess==0.7.0
 pure-eval==0.2.2
     # via stack-data
 pycparser==2.21
-    # via
-    #   -c requirements.txt
-    #   cffi
+    # via cffi
 pygments==2.17.2
     # via
     #   ipython
     #   nbconvert
-pylint==3.0.3
+pylint==3.0.4
     # via -r dev-requirements.in
 pyproject-hooks==1.0.0
-    # via build
+    # via
+    #   build
+    #   pip-tools
 python-dateutil==2.8.2
     # via
     #   arrow
@@ -248,7 +257,6 @@ python-json-logger==2.0.7
     # via jupyter-events
 pyyaml==6.0.1
     # via
-    #   -c requirements.txt
     #   jupyter-events
     #   pre-commit
 pyzmq==25.1.2
@@ -273,7 +281,7 @@ rfc3986-validator==0.1.1
     # via
     #   jsonschema
     #   jupyter-events
-rpds-py==0.17.1
+rpds-py==0.18.0
     # via
     #   jsonschema
     #   referencing
@@ -289,6 +297,7 @@ sniffio==1.3.0
     # via
     #   -c requirements.txt
     #   anyio
+    #   httpx
 soupsieve==2.5
     # via beautifulsoup4
 stack-data==0.6.3
@@ -327,11 +336,11 @@ types-python-dateutil==2.8.19.20240106
     # via arrow
 uri-template==1.3.0
     # via jsonschema
-urllib3==2.2.0
+urllib3==2.2.1
     # via
     #   -c requirements.txt
     #   requests
-virtualenv==20.25.0
+virtualenv==20.25.1
     # via pre-commit
 wcwidth==0.2.13
     # via prompt-toolkit
