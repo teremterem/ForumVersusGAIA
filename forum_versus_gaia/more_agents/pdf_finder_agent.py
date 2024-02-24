@@ -80,7 +80,17 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
             if not await responses.acontains_errors():
                 break
 
-        ctx.respond(responses)
+        # TODO TODO TODO TODO TODO Oleksandr: two problems with this workaround:
+        #  1. if there are no responses at all, we loose the history of what urls and pdfs were tried in this branch
+        #     (or branches)
+        #  2. too much boilerplate code (or something else ? I already forgot what problem I was going to write down)
+        responses_as_list = [resp async for resp in responses]
+        if responses_as_list:
+            branch_further_response_from = await responses_as_list[0].aget_previous_msg_promise()
+        else:
+            branch_further_response_from = None
+
+        ctx.respond(responses, branch_from=branch_further_response_from)
 
 
 @forum.agent(alias="BROWSING_AGENT")
@@ -191,7 +201,23 @@ async def acollect_tried_urls(ctx: InteractionContext) -> set[str]:
     """
     Collect URLs that were already tried by the agent.
     """
-    return {msg.page_url for msg in await ctx.request_messages.amaterialize_full_history() if hasattr(msg, "page_url")}
+    tried_urls = {
+        msg.page_url for msg in await ctx.request_messages.amaterialize_full_history() if hasattr(msg, "page_url")
+    }
+    # print()
+    # print()
+    # print()
+    # print()
+    # for msg in await ctx.request_messages.amaterialize_full_history():
+    #     print(f"{msg.original_sender_alias}: {msg.content[:1000]}")
+    #     print()
+    # # print()
+    # # print()
+    # # print()
+    # # pprint(tried_urls)
+    # print()
+    # print()
+    return tried_urls
 
 
 async def acollect_checked_pdfs(ctx: InteractionContext) -> set[str]:
@@ -354,8 +380,12 @@ async def render_user_utterances(ctx: InteractionContext) -> str:
     """
     Render user utterances as a string.
     """
-    return await arender_conversation(
-        # TODO TODO TODO Oleksandr: introduce a method that returns full history as an AsyncMessageSequence
-        await ctx.request_messages.aget_full_history(),
-        alias_resolver=lambda msg: msg.original_sender_alias if msg.original_sender_alias == USER_ALIAS else None,
-    )
+    encountered_messages = set()
+    full_history = await ctx.request_messages.amaterialize_full_history()
+    for i in range(len(full_history) - 1, -1, -1):
+        if full_history[i].original_sender_alias != USER_ALIAS or full_history[i].content in encountered_messages:
+            full_history.pop(i)
+        else:
+            encountered_messages.add(full_history[i].content)
+
+    return await arender_conversation(full_history)
