@@ -17,11 +17,11 @@ from agentforum.ext.llms.openai import _message_to_openai_dict, _OpenAIStreamedM
 from agentforum.typing import MessageType
 from agentforum.utils import amaterialize_message_sequence
 
-from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS, CAPTURE_MOCKING_DATA
+from forum_versus_gaia.forum_versus_gaia_config import REMOVE_GAIA_LINKS, MOCK_CALLS
 from forum_versus_gaia.utils import ContentMismatchError
 
 
-@pytest.fixture(autouse=not CAPTURE_MOCKING_DATA)
+@pytest.fixture(autouse=MOCK_CALLS)
 def patch_openai() -> None:
     """
     Patch the OpenAI API calls to use captured responses.

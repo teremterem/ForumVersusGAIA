@@ -25,7 +25,9 @@ REMOVE_GAIA_LINKS = True
 
 forum = Forum()
 
-CAPTURE_MOCKING_DATA = False
+MOCK_CALLS = True
+CAPTURE_MOCKING_DATA = not MOCK_CALLS
+
 CAPTURED_DATA = {
     "openai": [],
     "serpapi": [],
