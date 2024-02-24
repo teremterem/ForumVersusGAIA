@@ -48,6 +48,12 @@ class ContentNotFoundError(ForumVersusGaiaError):
     """
 
 
+class ContentAlreadySeenError(ForumVersusGaiaError):
+    """
+    Raised when the content was already seen by the agent before.
+    """
+
+
 class TooManyStepsError(ForumVersusGaiaError):
     """
     Raised when an agent takes too many steps to complete.
@@ -165,7 +171,7 @@ def convert_html_to_markdown(html: str, baseurl: str = "") -> str:
     """
     Convert HTML to markdown (the best effort).
     """
-    h = html2text.HTML2Text(baseurl=baseurl)
+    h = html2text.HTML2Text(baseurl=baseurl, bodywidth=0)
     h.ignore_links = False
     return h.handle(html)
 

@@ -16,16 +16,18 @@ import promptlayer
 
 async_openai_client = promptlayer.openai.AsyncOpenAI()
 
-FAST_GPT = "gpt-3.5-turbo"  # "gpt-3.5-turbo-1106"
+FAST_GPT = "gpt-3.5-turbo-0125"
 # FAST_GPT = "gpt-4-0125-preview"
 SLOW_GPT = "gpt-4-0125-preview"
-# SLOW_GPT = "gpt-3.5-turbo"  # "gpt-3.5-turbo-1106"
+# SLOW_GPT = "gpt-3.5-turbo-0125"
 
 REMOVE_GAIA_LINKS = True
 
 forum = Forum()
 
-CAPTURE_MOCKING_DATA = True
+MOCK_CALLS = True
+CAPTURE_MOCKING_DATA = not MOCK_CALLS
+
 CAPTURED_DATA = {
     "openai": [],
     "serpapi": [],
@@ -51,7 +53,7 @@ if CAPTURE_MOCKING_DATA:
             message_dicts = [_message_to_openai_dict(msg) for msg in await amaterialize_message_sequence(prompt)]
             response_dict = {
                 "content": await result.amaterialize_content(),
-                **(await result.amaterialize_metadata()).as_dict,
+                **(await result.amaterialize_metadata()).as_dict(),
             }
             CAPTURED_DATA["openai"].append(
                 {

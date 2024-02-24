@@ -12,7 +12,6 @@ from agentforum.utils import arender_conversation
 from forum_versus_gaia.forum_versus_gaia_config import forum, slow_gpt_completion
 from forum_versus_gaia.utils import (
     get_serpapi_results,
-    is_valid_url,
     convert_html_to_markdown,
     ContentMismatchError,
     assert_valid_url,
@@ -20,6 +19,7 @@ from forum_versus_gaia.utils import (
     ForumVersusGaiaError,
     TooManyStepsError,
     adownload_from_web,
+    ContentAlreadySeenError,
 )
 
 MAX_RETRIES = 3
@@ -72,21 +72,26 @@ async def pdf_finder_agent(ctx: InteractionContext) -> None:
     ]
     queries = await slow_gpt_completion(prompt=prompt, pl_tags=["START"]).amaterialize_content()
 
+    responses = None
     for query in queries.split("Search Query:")[1:]:
         query = query.split("\n\n")[0].strip()
 
-        responses = ctx.request_messages  # this is just for convenience - it will be overwritten later
         for _ in range(MAX_RETRIES):
-            responses = pdf_browsing_agent.ask(
-                query,
-                # TODO Oleksandr: `branch_from` should accept either a message promise or a concrete message or a
-                #  message id or even a message sequence (but not your own list of messages ?)
-                branch_from=await responses.aget_concluding_msg_promise(),
-            )
+            responses = pdf_browsing_agent.ask(query, branch_from=responses)
             if not await responses.acontains_errors():
                 break
 
-        ctx.respond(responses)
+        # TODO TODO TODO TODO TODO Oleksandr: two problems with this workaround:
+        #  1. if there are no responses at all, we loose the history of what urls and pdfs were tried in this branch
+        #     (or branches)
+        #  2. too much boilerplate code (or something else ? I already forgot what problem I was going to write down)
+        responses_as_list = [resp async for resp in responses]
+        if responses_as_list:
+            branch_further_response_from = await responses_as_list[0].aget_previous_msg_promise()
+        else:
+            branch_further_response_from = None
+
+        ctx.respond(responses, branch_from=branch_further_response_from)
 
 
 @forum.agent(alias="BROWSING_AGENT")
@@ -97,17 +102,22 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
     if depth <= 0:
         raise TooManyStepsError("I couldn't find a PDF document within a reasonable number of steps.")
 
-    query_or_url = await ctx.request_messages.amaterialize_concluding_content()
+    request = await ctx.request_messages.amaterialize_concluding_message()
     already_tried_urls = await acollect_tried_urls(ctx)
 
-    if is_valid_url(query_or_url):  # TODO TODO TODO Oleksandr: just check for page_url in message metadata ?
-        web_content, is_pdf = await adownload_from_web(query_or_url)
+    if hasattr(request, "page_url"):
+        web_content, is_pdf = await adownload_from_web(request.page_url)
 
         if is_pdf:
             # pdf was found! returning its text
             # TODO Oleksandr: introduce the concept of user_proxy_agent to send all these service messages
             #  to that agent instead of just printing them directly to the console
-            print(f"\n\033[90m📗 READING PDF FROM: {query_or_url}", end="", flush=True)
+            print(f"\n\033[90m📗 READING PDF FROM: {request.page_url}", end="", flush=True)
+
+            already_checked_pdfs = await acollect_checked_pdfs(ctx)
+            if web_content in already_checked_pdfs:
+                print(" - ALREADY SEEN\033[0m")
+                raise ContentAlreadySeenError
 
             pdf_snippets = await aextract_pdf_snippets(
                 pdf_text=web_content, user_request=await render_user_utterances(ctx)
@@ -115,7 +125,7 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
             ctx.respond(pdf_snippets, pdf=web_content)
             return
 
-        print(f"\n\033[90m🔗 NAVIGATING TO: {query_or_url}\033[0m")
+        print(f"\n\033[90m🔗 NAVIGATING TO: {request.page_url}\033[0m")
 
         prompt_header_template = (
             "Your name is {AGENT_ALIAS}. You will be provided with the content of a web page that was found via "
@@ -123,13 +133,13 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
             "from this web page a URL that, in your opinion, is the most likely to lead to the PDF document the "
             "user is looking for."
         )
-        prompt_context = convert_html_to_markdown(web_content, baseurl=query_or_url)
+        prompt_context = convert_html_to_markdown(web_content, baseurl=request.page_url)
         prompt_context = remove_tried_urls_in_markdown(prompt_context, already_tried_urls)
 
     else:
-        print(f"\n\033[90m🔍 LOOKING FOR PDF: {query_or_url}\033[0m")
+        print(f"\n\033[90m🔍 LOOKING FOR PDF: {request.content}\033[0m")
 
-        organic_results = get_serpapi_results(query_or_url)
+        organic_results = get_serpapi_results(request.content)
         organic_results = [result for result in organic_results if result["link"].strip() not in already_tried_urls]
 
         prompt_header_template = (
@@ -154,7 +164,6 @@ async def pdf_browsing_agent(ctx: InteractionContext, depth: int = MAX_DEPTH) ->
             page_url=page_url,
         ),
         depth=depth - 1,
-        branch_from=await ctx.request_messages.aget_concluding_msg_promise(),
     )
 
 
@@ -182,22 +191,61 @@ async def ask_gpt_for_url(
         },
         {
             "content": "PLEASE ONLY RETURN A URL AND NO OTHER TEXT.\n\nURL:",
+            # "content": (
+            #     "Use the following format:\n"
+            #     "\n"
+            #     "Thought: you should always think out loud before choose a url\n"
+            #     "URL: https://... (only the url, NO MARKDOWN)\n"
+            #     "\n"
+            #     "Begin!\n"
+            #     "\n"
+            #     "Thought:"
+            # ),
             "role": "system",
         },
     ]
-    page_url = await slow_gpt_completion(prompt=prompt, pl_tags=pl_tags).amaterialize_content()
-    return page_url.strip()
+    completion = await slow_gpt_completion(prompt=prompt, pl_tags=pl_tags).amaterialize_content()
+    page_url = completion.strip()
+    # parts = completion.split("URL:")
+    # if len(parts) < 2:
+    #     return completion  # there is no url, just some text (probably an error message) -> return the whole thing
+    # page_url = parts[1].split("\n\n")[0].strip()
+    return page_url
 
 
 async def acollect_tried_urls(ctx: InteractionContext) -> set[str]:
     """
     Collect URLs that were already tried by the agent.
     """
-    return {
-        msg.content.strip()
-        for msg in await ctx.request_messages.amaterialize_full_history()
-        if msg.original_sender_alias == ctx.this_agent.alias and is_valid_url(msg.content.strip())
+    tried_urls = {
+        msg.page_url for msg in await ctx.request_messages.amaterialize_full_history() if hasattr(msg, "page_url")
     }
+    # # try:
+    # #     tried_urls.remove("https://www.nsi.bg/census2011/PDOCS2/Census2011final_en.pdf")
+    # # except KeyError:
+    # #     pass
+    # # tried_urls.add("https://muse.jhu.edu/book/24372")
+    # print()
+    # print()
+    # print()
+    # print()
+    # for msg in await ctx.request_messages.amaterialize_full_history():
+    #     print(f"{msg.original_sender_alias}: {msg.content[:1000]}")
+    #     print()
+    # # print()
+    # # print()
+    # # print()
+    # # pprint(tried_urls)
+    # print()
+    # print()
+    return tried_urls
+
+
+async def acollect_checked_pdfs(ctx: InteractionContext) -> set[str]:
+    """
+    Collect pdf texts that were already seen by the model.
+    """
+    return {msg.pdf for msg in await ctx.request_messages.amaterialize_full_history() if hasattr(msg, "pdf")}
 
 
 def remove_tried_urls_in_markdown(prompt_context: str, tried_urls: set[str]) -> str:
@@ -209,20 +257,11 @@ def remove_tried_urls_in_markdown(prompt_context: str, tried_urls: set[str]) -> 
     return prompt_context
 
 
-ALREADY_CHECKED_PDFS: set[str] = set()  # TODO TODO TODO Oleksandr: this is a super temporary solution !!!
-
-
 async def aextract_pdf_snippets(pdf_text: str, user_request: str) -> str:
     """
     Extract snippets from a PDF document that are relevant to the user's request. If pdf_text is a wrong PDF
     document or does not contain any useful information then ContentMismatchError is raised.
     """
-    if pdf_text in ALREADY_CHECKED_PDFS:
-        print(" - ALREADY SEEN\033[0m")
-        # just return this as if it's a "relevant snippet", as we probably already have relevant snippet(s)
-        return "-"
-    ALREADY_CHECKED_PDFS.add(pdf_text)
-
     pdf_msgs = [
         {
             "content": (
@@ -362,8 +401,12 @@ async def render_user_utterances(ctx: InteractionContext) -> str:
     """
     Render user utterances as a string.
     """
-    return await arender_conversation(
-        # TODO TODO TODO Oleksandr: introduce a method that returns full history as an AsyncMessageSequence
-        await ctx.request_messages.aget_full_history(),
-        alias_resolver=lambda msg: msg.original_sender_alias if msg.original_sender_alias == USER_ALIAS else None,
-    )
+    encountered_messages = set()
+    full_history = await ctx.request_messages.amaterialize_full_history()
+    for i in range(len(full_history) - 1, -1, -1):
+        if full_history[i].original_sender_alias != USER_ALIAS or full_history[i].content in encountered_messages:
+            full_history.pop(i)
+        else:
+            encountered_messages.add(full_history[i].content)
+
+    return await arender_conversation(full_history)
