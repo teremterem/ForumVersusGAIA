@@ -191,11 +191,26 @@ async def ask_gpt_for_url(
         },
         {
             "content": "PLEASE ONLY RETURN A URL AND NO OTHER TEXT.\n\nURL:",
+            # "content": (
+            #     "Use the following format:\n"
+            #     "\n"
+            #     "Thought: you should always think out loud before choose a url\n"
+            #     "URL: https://... (only the url, NO MARKDOWN)\n"
+            #     "\n"
+            #     "Begin!\n"
+            #     "\n"
+            #     "Thought:"
+            # ),
             "role": "system",
         },
     ]
-    page_url = await slow_gpt_completion(prompt=prompt, pl_tags=pl_tags).amaterialize_content()
-    return page_url.strip()
+    completion = await slow_gpt_completion(prompt=prompt, pl_tags=pl_tags).amaterialize_content()
+    page_url = completion.strip()
+    # parts = completion.split("URL:")
+    # if len(parts) < 2:
+    #     return completion  # there is no url, just some text (probably an error message) -> return the whole thing
+    # page_url = parts[1].split("\n\n")[0].strip()
+    return page_url
 
 
 async def acollect_tried_urls(ctx: InteractionContext) -> set[str]:
