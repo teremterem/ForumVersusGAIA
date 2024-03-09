@@ -17,7 +17,7 @@ argon2-cffi-bindings==21.2.0
     # via argon2-cffi
 arrow==1.3.0
     # via isoduration
-astroid==3.0.3
+astroid==3.1.0
     # via pylint
 asttokens==2.4.1
     # via stack-data
@@ -35,7 +35,7 @@ black==24.2.0
     # via -r dev-requirements.in
 bleach==6.1.0
     # via nbconvert
-build==1.0.3
+build==1.1.1
     # via pip-tools
 certifi==2024.2.2
     # via
@@ -96,9 +96,9 @@ idna==3.6
     #   httpx
     #   jsonschema
     #   requests
-ipykernel==6.29.2
+ipykernel==6.29.3
     # via jupyterlab
-ipython==8.22.1
+ipython==8.22.2
     # via
     #   -r dev-requirements.in
     #   ipykernel
@@ -114,7 +114,7 @@ jinja2==3.1.3
     #   jupyterlab
     #   jupyterlab-server
     #   nbconvert
-json5==0.9.17
+json5==0.9.22
     # via jupyterlab-server
 jsonpointer==2.4
     # via jsonschema
@@ -141,9 +141,9 @@ jupyter-core==5.7.1
     #   nbformat
 jupyter-events==0.9.0
     # via jupyter-server
-jupyter-lsp==2.2.2
+jupyter-lsp==2.2.4
     # via jupyterlab
-jupyter-server==2.12.5
+jupyter-server==2.13.0
     # via
     #   jupyter-lsp
     #   jupyterlab
@@ -152,7 +152,7 @@ jupyter-server==2.12.5
     #   notebook-shim
 jupyter-server-terminals==0.5.2
     # via jupyter-server
-jupyterlab==4.1.2
+jupyterlab==4.1.4
     # via
     #   -r dev-requirements.in
     #   notebook
@@ -178,7 +178,7 @@ mypy-extensions==1.0.0
     # via black
 nbclient==0.9.0
     # via nbconvert
-nbconvert==7.16.1
+nbconvert==7.16.2
     # via jupyter-server
 nbformat==5.9.2
     # via
@@ -189,7 +189,7 @@ nest-asyncio==1.6.0
     # via ipykernel
 nodeenv==1.8.0
     # via pre-commit
-notebook==7.1.0
+notebook==7.1.1
     # via -r dev-requirements.in
 notebook-shim==0.2.4
     # via
@@ -215,7 +215,7 @@ pathspec==0.12.1
     # via black
 pexpect==4.9.0
     # via ipython
-pip-tools==7.4.0
+pip-tools==7.4.1
     # via -r dev-requirements.in
 platformdirs==4.2.0
     # via
@@ -243,13 +243,13 @@ pygments==2.17.2
     # via
     #   ipython
     #   nbconvert
-pylint==3.0.4
+pylint==3.1.0
     # via -r dev-requirements.in
 pyproject-hooks==1.0.0
     # via
     #   build
     #   pip-tools
-python-dateutil==2.8.2
+python-dateutil==2.9.0.post0
     # via
     #   arrow
     #   jupyter-client
@@ -293,7 +293,7 @@ six==1.16.0
     #   bleach
     #   python-dateutil
     #   rfc3339-validator
-sniffio==1.3.0
+sniffio==1.3.1
     # via
     #   -c requirements.txt
     #   anyio
@@ -308,7 +308,7 @@ terminado==0.18.0
     #   jupyter-server-terminals
 tinycss2==1.2.1
     # via nbconvert
-tomlkit==0.12.3
+tomlkit==0.12.4
     # via pylint
 tornado==6.4
     # via

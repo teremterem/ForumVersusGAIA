@@ -1,12 +1,12 @@
-agentforum==0.0.9
+agentforum==0.0.10
 google-search-results==2.4.2
-html2text==2020.1.16  # TODO Oleksandr: this one is GPL - try markdownify or Pandoc instead
+html2text==2024.2.26  # TODO Oleksandr: this one is GPL - try markdownify or Pandoc instead
 httpx==0.27.0
 numpy==1.26.4
-openai==1.12.0
-promptlayer==0.4.8
-pypdf==4.0.2
+openai==1.13.3
+promptlayer==0.5.0
+pypdf==4.1.0
 pytest==7.4.4  # TODO Oleksandr: upgrade to 8.x.x when breaking changes are reconciled
-pytest-asyncio==0.23.5
+pytest-asyncio==0.23.5.post1
 python-dotenv==1.0.1
 tiktoken==0.6.0
