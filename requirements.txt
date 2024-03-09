@@ -4,8 +4,6 @@
 #
 #    pip-compile --strip-extras
 #
-agentforum==0.0.10
-    # via -r requirements.in
 annotated-types==0.6.0
     # via pydantic
 anyio==4.3.0
@@ -51,9 +49,7 @@ pluggy==1.4.0
 promptlayer==0.5.0
     # via -r requirements.in
 pydantic==2.6.3
-    # via
-    #   agentforum
-    #   openai
+    # via openai
 pydantic-core==2.16.3
     # via pydantic
 pypdf==4.1.0
